@@ -1,0 +1,31 @@
+services:
+  db_{{ client_id }}:
+    image: postgres:{{ postgres_version }}
+    environment:
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: {{ db_password }}
+      POSTGRES_DB: postgres
+    volumes:
+      - odoo-db-data-{{ client_id }}:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  web_{{ client_id }}:
+    image: odoo:{{ odoo_version }}
+    depends_on:
+      - db_{{ client_id }}
+    ports:
+      - "127.0.0.1:{{ http_port }}:8069"
+      - "127.0.0.1:{{ longpolling_port }}:8072"
+    environment:
+      HOST: db_{{ client_id }}
+      USER: odoo
+      PASSWORD: {{ db_password }}
+    volumes:
+      - odoo-web-data-{{ client_id }}:/var/lib/odoo
+      - {{ addons_host_path }}:/mnt/extra-addons
+      - {{ config_host_path }}:/etc/odoo
+    restart: unless-stopped
+
+volumes:
+  odoo-db-data-{{ client_id }}:
+  odoo-web-data-{{ client_id }}:

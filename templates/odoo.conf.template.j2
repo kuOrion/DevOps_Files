@@ -1,0 +1,10 @@
+[options]
+data_dir = /var/lib/odoo/.local/share/Odoo
+addons_path = /usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
+list_db = {{ list_db }}
+proxy_mode = {{ proxy_mode }}
+workers = {{ workers }}
+max_cron_threads = 1
+admin_passwd = {{ master_password }}
+db_name = {{ db_name }}
+dbfilter = ^{{ db_name }}$

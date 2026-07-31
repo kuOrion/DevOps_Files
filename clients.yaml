@@ -1,0 +1,102 @@
+# Single source of truth for per-client deployment config.
+# render-client.sh reads this + templates/ to generate each client's
+# docker-compose.yml/odoo.conf — never hand-maintain those files directly.
+#
+# Secrets are NOT stored here. `secrets_ref` is resolved at render time —
+# currently from build/secrets.local.yaml (gitignored, local-only stand-in)
+# until milestone 2 (AWS SSM Parameter Store) lands.
+
+clients:
+  18dec:
+    display_name: "Orion Internal Test (18 Dec)"
+    db_name: db_orion_test_18_dec
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: cloud            # cloud | onprem
+    onprem_tier: null         # tier1 | tier2 | null (only meaningful if hosting: onprem)
+    list_db: true             # flip to false once per-client HAProxy routing exists (milestone 5/6)
+    proxy_mode: false         # true once behind HAProxy
+    workers: 2
+    http_port: 8069           # host-side bind (127.0.0.1 only) — must be unique per client on one host
+    longpolling_port: 8072
+    domain: null              # HAProxy routing target once per-client routing exists; null = not yet exposed
+    secrets_ref: /erp16/clients/18dec   # SSM Parameter Store path prefix (future); local key prefix (now)
+    modules:                  # verified 2026-07-31 via ir_module_module state='installed'
+                               # intersected against addons/all/latest/ — validated at
+                               # render/deploy time, don't hand-edit without re-checking
+      - base_account_budget
+      - base_accounting_kit
+      - document_knowledge
+      - document_page
+      - document_page_procedure
+      - document_page_quality_manual
+      - helpdesk_mgmt
+      - hr_contract_types
+      - hr_payroll_community
+      - mgmtsystem
+      - mgmtsystem_action
+      - mgmtsystem_audit
+      - mgmtsystem_manual
+      - mgmtsystem_nonconformity
+      - mgmtsystem_quality
+      - mgmtsystem_review
+      - mgmtsystem_survey
+      - nspl_project_task_access
+      - oh_appraisal
+      - orion_Export_OA_report
+      - orion_N_specification_views
+      - orion_Sales_person_visit
+      - orion_delivery_challan_report
+      - orion_domestic_proforma
+      - orion_ex_inr_report
+      - orion_export_dispatch_list_on_letter_head
+      - orion_export_report_list
+      - orion_fg_to_stock
+      - orion_grn_report
+      - orion_inventory_product_transfer
+      - orion_invoice
+      - orion_invoice_number_assignation
+      - orion_invoice_report
+      - orion_json_file_create
+      - orion_manufacturing
+      - orion_manufacturing_BOM_issue_resolve
+      - orion_manufacturing_done_report
+      - orion_manufacturing_new_button
+      - orion_manufacturing_serial_delivery
+      - orion_mfg_pending
+      - orion_mis_invoice
+      - orion_mis_quotation
+      - orion_mis_reports
+      - orion_mis_reports_base
+      - orion_pdi_to_fg
+      - orion_pr_ex_in_report
+      - orion_product
+      - orion_product_default_type
+      - orion_purchase
+      - orion_purchase_number_assignation
+      - orion_purchase_order_line
+      - orion_purchase_order_validation
+      - orion_purchase_report
+      - orion_quotation_order_no
+      - orion_quotation_order_validation
+      - orion_repair_customisation_location
+      - orion_repair_report
+      - orion_sale_report
+      - orion_sales
+      - orion_sales_schedule
+      - orion_sample_invoice_report
+      - orion_serial_no_transfer_FG
+      - orion_serial_transfer_pdi
+      - orion_specifications
+      - orion_tc_test
+      - purchase_amendment
+      - purchase_request
+      - report_py3o
+      - sale_amendment
+      - serial_fillter_MO
+      - sh_access_management
+      - sh_mo_auto_serial_no
+      - sh_product_configurator
+    backup:
+      daily_retention_days: 10
+      monthly_snapshot_retention_months: 12
