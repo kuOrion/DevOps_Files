@@ -107,6 +107,104 @@ clients:
       daily_retention_days: 10
       monthly_snapshot_retention_months: 12
 
+  orion_test:
+    display_name: "Orion Test (internal duplicate of 18dec)"
+    db_name: orion_test
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: cloud
+    onprem_tier: null
+    list_db: true             # single-client sandbox for now; flip false once milestone 6 lands
+    proxy_mode: false         # true once behind HAProxy (not applicable — tunnel-only, see below)
+    workers: 2
+    cron_enabled: false       # sandbox-safety default - see 18dec's note above
+    http_port: 8069           # freed up now that 18dec's containers were torn down
+    longpolling_port: 8072
+    domain: null              # PERMANENTLY excluded from milestone 5 public routing — this is Orion's
+                               # own internal duplicate of 18dec, not a separate external client (see
+                               # ROADMAP.md's milestone 5 note); stays tunnel-only via browse_sandbox
+    secrets_ref: /erp16-sandbox/orion_test   # sandbox SSM path prefix (see build/README.md); repointed at
+                                              # the client's real AWS account once milestone 2 is production-ready
+    modules:                  # verified 2026-08-01 via ir_module_module state='installed'
+                               # intersected against addons/all/latest/ — identical to 18dec's list,
+                               # confirming this really is a byte-for-byte duplicate
+      - base_account_budget
+      - base_accounting_kit
+      - document_knowledge
+      - document_page
+      - document_page_procedure
+      - document_page_quality_manual
+      - helpdesk_mgmt
+      - hr_contract_types
+      - hr_payroll_community
+      - mgmtsystem
+      - mgmtsystem_action
+      - mgmtsystem_audit
+      - mgmtsystem_manual
+      - mgmtsystem_nonconformity
+      - mgmtsystem_quality
+      - mgmtsystem_review
+      - mgmtsystem_survey
+      - nspl_project_task_access
+      - oh_appraisal
+      - orion_Export_OA_report
+      - orion_N_specification_views
+      - orion_Sales_person_visit
+      - orion_delivery_challan_report
+      - orion_domestic_proforma
+      - orion_ex_inr_report
+      - orion_export_dispatch_list_on_letter_head
+      - orion_export_report_list
+      - orion_fg_to_stock
+      - orion_grn_report
+      - orion_inventory_product_transfer
+      - orion_invoice
+      - orion_invoice_number_assignation
+      - orion_invoice_report
+      - orion_json_file_create
+      - orion_manufacturing
+      - orion_manufacturing_BOM_issue_resolve
+      - orion_manufacturing_done_report
+      - orion_manufacturing_new_button
+      - orion_manufacturing_serial_delivery
+      - orion_mfg_pending
+      - orion_mis_invoice
+      - orion_mis_quotation
+      - orion_mis_reports
+      - orion_mis_reports_base
+      - orion_pdi_to_fg
+      - orion_pr_ex_in_report
+      - orion_product
+      - orion_product_default_type
+      - orion_purchase
+      - orion_purchase_number_assignation
+      - orion_purchase_order_line
+      - orion_purchase_order_validation
+      - orion_purchase_report
+      - orion_quotation_order_no
+      - orion_quotation_order_validation
+      - orion_repair_customisation_location
+      - orion_repair_report
+      - orion_sale_report
+      - orion_sales
+      - orion_sales_schedule
+      - orion_sample_invoice_report
+      - orion_serial_no_transfer_FG
+      - orion_serial_transfer_pdi
+      - orion_specifications
+      - orion_tc_test
+      - purchase_amendment
+      - purchase_request
+      - report_py3o
+      - sale_amendment
+      - serial_fillter_MO
+      - sh_access_management
+      - sh_mo_auto_serial_no
+      - sh_product_configurator
+    backup:
+      daily_retention_days: 10
+      monthly_snapshot_retention_months: 12
+
   parus_instruments:
     display_name: "Parus Instruments"
     db_name: parus_instruments
