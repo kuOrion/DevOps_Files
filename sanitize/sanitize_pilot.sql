@@ -1,6 +1,19 @@
 -- Sanitization pilot, run against parus_instruments_scratch ONLY.
 -- Covers 3 of the 4 agreed categories: structured PII, financial scaling,
 -- free-text/tracking placeholders. ir_attachment handled separately.
+--
+-- SUPERSEDED (2026-08-02): section 2 (financial scaling) directly scales
+-- account_move/account_move_line via raw SQL. Proven via direct empirical
+-- test (see ROADMAP.md) that this is unsafe for any monetary field Odoo
+-- tracks as a compute dependency (e.g. price_subtotal/amount_total) — an
+-- ORM write() to a real dependency (price_unit) later would silently
+-- revert these to values derived from the real, unscaled inputs. The
+-- correct approach is ORM-mediated: scale only genuine leaf fields
+-- (compute=False, discovered via discover_monetary_leaves.py) through a
+-- real odoo shell write(), never raw SQL, and let Odoo's own dependency
+-- graph derive everything else. Sections 1 (PII) and 3 (messages) are
+-- still valid as-is — this note applies to section 2 only.
+-- Kept for reference/history, not meant to be run as-is going forward.
 
 BEGIN;
 
