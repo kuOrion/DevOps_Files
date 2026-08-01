@@ -34,12 +34,25 @@ def _factor_for(anchor_model: str, anchor_id: int) -> float:
 
 
 def _find_anchor_field(env, model_name: str, leaf_model_names: set) -> str:
-    """Find a many2one field on this model pointing at another leaf-bearing
-    model — that's the parent document to share a scaling factor with."""
+    """Find a many2one field on this model that is the REAL reverse side of a
+    declared one2many on the target model — i.e. an actual parent-document
+    relationship, not just any many2one pointing at a model that happens to
+    have money in it. (First version used "many2one -> leaf-bearing model"
+    alone and got fooled by company_id: res.company has a monetary leaf field
+    too, and company_id exists on nearly every model, so it drowned out the
+    real anchor like sale.order.line's order_id every time. A real one2many/
+    many2one pair, discoverable via Odoo's own field metadata, is precise.)"""
     Model = env[model_name]
     candidates = []
     for fname, f in Model._fields.items():
-        if f.type == "many2one" and f.comodel_name in leaf_model_names and f.comodel_name != model_name:
+        if f.type != "many2one" or f.comodel_name not in leaf_model_names or f.comodel_name == model_name:
+            continue
+        Comodel = env[f.comodel_name]
+        has_reverse_one2many = any(
+            cf.type == "one2many" and cf.comodel_name == model_name and cf.inverse_name == fname
+            for cf in Comodel._fields.values()
+        )
+        if has_reverse_one2many:
             candidates.append((fname, f.required))
     if not candidates:
         return None
