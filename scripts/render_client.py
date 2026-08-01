@@ -97,6 +97,7 @@ def main():
         "list_db": str(cfg.get("list_db", False)).lower(),
         "proxy_mode": str(cfg.get("proxy_mode", False)).lower(),
         "workers": cfg.get("workers", 2),
+        "max_cron_threads": 1 if cfg.get("cron_enabled", False) else 0,
         "http_port": cfg["http_port"],
         "longpolling_port": cfg["longpolling_port"],
         "addons_host_path": args.addons_path or "/CHANGE_ME/addons",

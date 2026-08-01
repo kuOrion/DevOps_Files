@@ -17,6 +17,9 @@ clients:
     list_db: true             # flip to false once per-client HAProxy routing exists (milestone 5/6)
     proxy_mode: false         # true once behind HAProxy
     workers: 2
+    cron_enabled: false       # sandbox-safety default: no cron worker at all (kills any outbound-capable
+                               # automation - mail queues, SMS, payment post-process - regardless of what's
+                               # active in the restored DB). Only flip true for a real deploy (milestone 5/10).
     http_port: 8069           # host-side bind (127.0.0.1 only) — must be unique per client on one host
     longpolling_port: 8072
     domain: null              # HAProxy routing target once per-client routing exists; null = not yet exposed
