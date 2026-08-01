@@ -108,9 +108,10 @@ def apply_rule2(env, batch_log_every=200):
                     vals[fname] = val * factor
                 rec.write(vals)
                 total_written += 1
-            except Exception:
+            except Exception as e:
                 env.cr.rollback()
                 total_errors += 1
+                print(f"ERROR on {model_name}({rec.id}): {type(e).__name__}: {e}")
             if total_written % batch_log_every == 0 and total_written:
                 env.cr.commit()
                 print(f"... {total_written} written so far ({model_name})")
