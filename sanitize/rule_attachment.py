@@ -112,7 +112,15 @@ def _write_to_filestore(env, db_name: str, content: bytes) -> tuple:
 
 
 def apply_attachment_sanitization(env):
-    real_attachments = env["ir.attachment"].search([("create_uid", "!=", 1), ("type", "=", "binary")])
+    # Raw SQL, not env['ir.attachment'].search() — the ORM's search() has a
+    # hidden business-logic filter that excludes attachments backing a
+    # Binary field's own storage (res_field set, e.g. a real contact's
+    # uploaded photo in res.partner.image_1920). Found via a real discrepancy:
+    # ORM search found 473, a direct SQL count found 553 — the missing 80
+    # were all real, genuine content (actual uploaded photos), exactly what
+    # this rule exists to sanitize. Raw SQL sees everything, no hidden filter.
+    env.cr.execute("select id, mimetype from ir_attachment where create_uid != 1 and type = 'binary'")
+    real_attachments = env.cr.fetchall()
     print(f"Real (create_uid != 1) binary attachments found: {len(real_attachments)}")
 
     # Precompute one placeholder write per distinct mimetype (dedup by content).
@@ -120,8 +128,8 @@ def apply_attachment_sanitization(env):
     total_written = 0
     total_errors = 0
 
-    for att in real_attachments:
-        mimetype = att.mimetype or ""
+    for att_id, mimetype in real_attachments:
+        mimetype = mimetype or ""
         try:
             if mimetype not in cache:
                 content = _placeholder_for(mimetype)
@@ -129,13 +137,13 @@ def apply_attachment_sanitization(env):
             checksum, store_fname, size = cache[mimetype]
             env.cr.execute(
                 'UPDATE ir_attachment SET store_fname = %s, checksum = %s, file_size = %s WHERE id = %s',
-                (store_fname, checksum, size, att.id),
+                (store_fname, checksum, size, att_id),
             )
             total_written += 1
         except Exception as e:
             env.cr.rollback()
             total_errors += 1
-            print(f"ERROR on ir.attachment({att.id}) mimetype={mimetype}: {type(e).__name__}: {e}")
+            print(f"ERROR on ir.attachment({att_id}) mimetype={mimetype}: {type(e).__name__}: {e}")
 
     env.cr.commit()
     print(f"Attachment sanitization done: {total_written} written, {total_errors} errors")
