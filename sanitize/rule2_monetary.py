@@ -20,8 +20,10 @@ own id — nothing to keep consistent with.
 """
 import hashlib
 import hmac
+import sys
 
-from discover_monetary_leaves import discover_monetary_leaves  # noqa: F821 (loaded via odoo shell alongside this file)
+sys.path.insert(0, "/tmp")  # odoo shell run via stdin doesn't add the script's own dir to sys.path
+from discover_monetary_leaves import discover_monetary_leaves  # noqa: E402,F821
 
 SECRET_KEY = b"replace-with-a-real-secret-never-shipped-with-sanitized-data"
 
