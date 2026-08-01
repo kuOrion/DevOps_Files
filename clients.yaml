@@ -2,9 +2,11 @@
 # render-client.sh reads this + templates/ to generate each client's
 # docker-compose.yml/odoo.conf — never hand-maintain those files directly.
 #
-# Secrets are NOT stored here. `secrets_ref` is resolved at render time —
-# currently from build/secrets.local.yaml (gitignored, local-only stand-in)
-# until milestone 2 (AWS SSM Parameter Store) lands.
+# Secrets are NOT stored here. `secrets_ref` is an AWS SSM Parameter Store
+# path prefix, resolved at render time (milestone 2, live as of 2026-08-01) -
+# currently the sandbox's own SSM (under /erp16-sandbox/*), repointed at the
+# client's real AWS account once that access is granted. Clients with no
+# secrets_ref fall back to build/secrets.local.yaml (gitignored, local-only).
 
 clients:
   18dec:
@@ -23,7 +25,8 @@ clients:
     http_port: 8069           # host-side bind (127.0.0.1 only) — must be unique per client on one host
     longpolling_port: 8072
     domain: null              # HAProxy routing target once per-client routing exists; null = not yet exposed
-    secrets_ref: /erp16/clients/18dec   # SSM Parameter Store path prefix (future); local key prefix (now)
+    secrets_ref: /erp16-sandbox/18dec   # sandbox SSM path prefix (see build/README.md); repointed at the
+                                        # client's real AWS account once milestone 2 is production-ready
     modules:                  # verified 2026-07-31 via ir_module_module state='installed'
                                # intersected against addons/all/latest/ — validated at
                                # render/deploy time, don't hand-edit without re-checking

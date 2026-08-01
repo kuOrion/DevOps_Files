@@ -2,14 +2,19 @@
 """
 Render a client's docker-compose.yml/odoo.conf from clients.yaml + templates/.
 
-Secrets are resolved from build/secrets.local.yaml (gitignored) — a local
-stand-in until milestone 2 (AWS SSM Parameter Store) replaces this resolver.
-Auto-generates and saves fresh random values on first use for a given client.
+Secrets are resolved from AWS SSM Parameter Store (SecureString) when a
+client has `secrets_ref` set, via the `aws` CLI (not boto3, to keep this
+script's dependencies minimal and consistent with the rest of this repo's
+tooling). Falls back to build/secrets.local.yaml (gitignored) only for
+clients with no secrets_ref configured. Missing parameters are auto-created
+with a fresh random value on first use, matching the old local-only
+behavior's convenience.
 """
 import argparse
 import os
 import secrets
 import string
+import subprocess
 import sys
 
 import yaml
@@ -33,9 +38,49 @@ def load_yaml(path, default=None):
         return yaml.safe_load(f) or (default if default is not None else {})
 
 
-def resolve_secrets(client_id):
-    """TODO(milestone 2): swap this for an SSM Parameter Store resolver,
-    keyed off the client's secrets_ref, without changing the caller's interface."""
+def _aws_cmd(base_args, aws_profile, aws_region):
+    cmd = ["aws"] + base_args + ["--region", aws_region]
+    if aws_profile:
+        cmd += ["--profile", aws_profile]
+    return cmd
+
+
+def ssm_get(name, aws_profile, aws_region):
+    """Return the parameter's decrypted value, or None if it doesn't exist."""
+    cmd = _aws_cmd(
+        ["ssm", "get-parameter", "--name", name, "--with-decryption",
+         "--query", "Parameter.Value", "--output", "text"],
+        aws_profile, aws_region,
+    )
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        if "ParameterNotFound" in result.stderr:
+            return None
+        raise RuntimeError(f"SSM get-parameter failed for {name}: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def ssm_put(name, value, aws_profile, aws_region):
+    cmd = _aws_cmd(
+        ["ssm", "put-parameter", "--name", name, "--type", "SecureString",
+         "--value", value, "--overwrite"],
+        aws_profile, aws_region,
+    )
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"SSM put-parameter failed for {name}: {result.stderr.strip()}")
+
+
+def ssm_get_or_create(name, aws_profile, aws_region):
+    value = ssm_get(name, aws_profile, aws_region)
+    if value is None:
+        value = gen_password()
+        ssm_put(name, value, aws_profile, aws_region)
+    return value
+
+
+def resolve_secrets_local(client_id):
+    """Stand-in for clients with no secrets_ref configured."""
     store = load_yaml(LOCAL_SECRETS, default={})
     changed = False
     entry = store.setdefault(client_id, {})
@@ -50,6 +95,14 @@ def resolve_secrets(client_id):
             yaml.safe_dump(store, f, default_flow_style=False)
         os.chmod(LOCAL_SECRETS, 0o600)
     return entry["db_password"], entry["master_password"]
+
+
+def resolve_secrets(client_id, secrets_ref, aws_profile, aws_region):
+    if secrets_ref:
+        db_password = ssm_get_or_create(f"{secrets_ref}/db_password", aws_profile, aws_region)
+        master_password = ssm_get_or_create(f"{secrets_ref}/master_password", aws_profile, aws_region)
+        return db_password, master_password
+    return resolve_secrets_local(client_id)
 
 
 def validate_modules(client_id, cfg, addons_path):
@@ -74,6 +127,8 @@ def main():
     ap.add_argument("--addons-path", help="Host path to addons/all/latest, for module validation and the compose mount")
     ap.add_argument("--config-path", help="Host path to write/read odoo.conf from, for the compose mount")
     ap.add_argument("--out", default=None, help="Output dir (default: build/generated/<client_id>)")
+    ap.add_argument("--aws-profile", default=None, help="AWS CLI profile for SSM resolution (default: whatever's active)")
+    ap.add_argument("--aws-region", default="ap-south-1", help="AWS region for SSM resolution")
     args = ap.parse_args()
 
     clients = load_yaml(CLIENTS_YAML).get("clients", {})
@@ -84,7 +139,9 @@ def main():
 
     validate_modules(args.client_id, cfg, args.addons_path)
 
-    db_password, master_password = resolve_secrets(args.client_id)
+    db_password, master_password = resolve_secrets(
+        args.client_id, cfg.get("secrets_ref"), args.aws_profile, args.aws_region
+    )
 
     out_dir = args.out or os.path.join(BUILD_DIR, "generated", args.client_id)
     os.makedirs(out_dir, exist_ok=True)
