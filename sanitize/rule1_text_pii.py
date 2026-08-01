@@ -78,12 +78,30 @@ def transform_html(value: str) -> str:
 
 
 class SafetyChecker:
-    """Caches ir.model / ir.model.data lookups across many calls."""
+    """Caches ir.model / ir.model.data lookups and unique-constraint checks."""
 
     def __init__(self, env):
         self.env = env
         self._model_names = None
         self._xmlids = None
+        self._unique_columns = None
+
+    def _has_unique_constraint(self, table: str, column: str) -> bool:
+        """Real PostgreSQL UNIQUE constraint on this column — a structural signal
+        that it's a short structured reference code (country/currency/language
+        codes etc.), not free text. Found via res.country.code crashing with a
+        UniqueViolation during real-scale testing — collision risk is only
+        negligible for long strings, not fixed-width 2-3 char codes."""
+        if self._unique_columns is None:
+            self.env.cr.execute("""
+                select tc.table_name, kcu.column_name
+                from information_schema.table_constraints tc
+                join information_schema.key_column_usage kcu
+                  on kcu.constraint_name = tc.constraint_name
+                where tc.constraint_type in ('UNIQUE', 'PRIMARY KEY')
+            """)
+            self._unique_columns = set(self.env.cr.fetchall())
+        return (table, column) in self._unique_columns
 
     def _is_system_identifier(self, value: str) -> bool:
         if self._model_names is None:
@@ -98,12 +116,14 @@ class SafetyChecker:
                 return True
         return False
 
-    def is_safe_to_transform(self, value) -> bool:
+    def is_safe_to_transform(self, value, table: str = None, column: str = None) -> bool:
         if not isinstance(value, str) or not value:
             return False
         if CODE_SHAPE.search(value):
             return False
         if self._is_system_identifier(value):
+            return False
+        if table and column and self._has_unique_constraint(table, column):
             return False
         return True
 
@@ -136,6 +156,7 @@ def apply_rule1(env, batch_log_every=500):
 
     for model_name, fname, ftype in leaves:
         Model = env[model_name]
+        table = Model._table
         try:
             recs = Model.search([(fname, "!=", False)])
         except Exception:
@@ -147,7 +168,7 @@ def apply_rule1(env, batch_log_every=500):
             except Exception:
                 env.cr.rollback()
                 continue
-            if not checker.is_safe_to_transform(val):
+            if not checker.is_safe_to_transform(val, table=table, column=fname):
                 total_skipped += 1
                 continue
             new_val = transform_html(val) if ftype == "html" else transform_plain(val)
