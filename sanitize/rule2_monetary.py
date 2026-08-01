@@ -36,18 +36,28 @@ def _factor_for(anchor_model: str, anchor_id: int) -> float:
 def _find_anchor_field(env, model_name: str, leaf_model_names: set) -> str:
     """Find a many2one field on this model that is the REAL reverse side of a
     declared one2many on the target model — i.e. an actual parent-document
-    relationship, not just any many2one pointing at a model that happens to
-    have money in it. (First version used "many2one -> leaf-bearing model"
-    alone and got fooled by company_id: res.company has a monetary leaf field
-    too, and company_id exists on nearly every model, so it drowned out the
-    real anchor like sale.order.line's order_id every time. A real one2many/
-    many2one pair, discoverable via Odoo's own field metadata, is precise.)"""
+    relationship (sale.order.line.order_id <-> sale.order.order_line), not
+    just any many2one pointing at a model that happens to have money in it.
+
+    Two wrong versions got fixed along the way, worth keeping the history:
+    v1 required "comodel has monetary leaves" — got fooled by company_id,
+    which exists on nearly every model and happened to qualify because
+    res.company has one unrelated leaf field, drowning out the real anchor.
+    v2 (this one) drops that requirement entirely: the parent document
+    (sale.order) may have ZERO leaf monetary fields of its own (its
+    amount_total etc. are all compute=True) and still be the correct anchor
+    for its lines — the one2many/many2one PAIR is the only real signal,
+    whether or not the parent itself holds money.
+    """
     Model = env[model_name]
     candidates = []
     for fname, f in Model._fields.items():
-        if f.type != "many2one" or f.comodel_name not in leaf_model_names or f.comodel_name == model_name:
+        if f.type != "many2one" or f.comodel_name == model_name:
             continue
-        Comodel = env[f.comodel_name]
+        try:
+            Comodel = env[f.comodel_name]
+        except Exception:
+            continue
         has_reverse_one2many = any(
             cf.type == "one2many" and cf.comodel_name == model_name and cf.inverse_name == fname
             for cf in Comodel._fields.values()
