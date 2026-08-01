@@ -38,6 +38,27 @@ UPPER = string.ascii_uppercase
 DIGITS = string.digits
 
 CODE_SHAPE = re.compile(r"^\[\(|self\.env|object\.env|\.env\[")
+
+# Odoo's own core chatter/messaging models (the `mail` module — foundational,
+# depended on by 46+ other modules, not a client-specific guess). These get a
+# fast blanket placeholder instead of the per-character transform: nothing
+# downstream needs a message body to *look* like realistic text (no format to
+# preserve, no uniqueness constraint), and these tables are typically the
+# largest in the whole schema (57k+ rows here) — per-character HMAC work on
+# every message is pure waste for no benefit. Matches the original agreed
+# design (see ROADMAP.md) before Rule 1 got generalized to default-transform.
+CHATTER_PLACEHOLDERS = {
+    ("mail.message", "body"): "<p>Test message placeholder.</p>",
+    ("mail.message", "subject"): "Test subject",
+    ("mail.message", "email_from"): "test@example.test",
+    ("mail.message", "record_name"): "Test record",
+    ("mail.mail", "body_html"): "<p>Test message placeholder.</p>",
+    ("mail.mail", "subject"): "Test subject",
+    ("mail.tracking.value", "old_value_char"): "old-test-value",
+    ("mail.tracking.value", "new_value_char"): "new-test-value",
+    ("mail.tracking.value", "old_value_text"): "old-test-value",
+    ("mail.tracking.value", "new_value_text"): "new-test-value",
+}
 TAG_RE = re.compile(r"(<[^>]+>)")
 
 EXCLUDED_MODEL_PREFIXES = ("ir.", "base.", "base_import.")
@@ -168,10 +189,17 @@ def apply_rule1(env, batch_log_every=500):
             except Exception:
                 env.cr.rollback()
                 continue
-            if not checker.is_safe_to_transform(val, table=table, column=fname):
-                total_skipped += 1
-                continue
-            new_val = transform_html(val) if ftype == "html" else transform_plain(val)
+            placeholder = CHATTER_PLACEHOLDERS.get((model_name, fname))
+            if placeholder is not None:
+                if not val:
+                    total_skipped += 1
+                    continue
+                new_val = placeholder
+            else:
+                if not checker.is_safe_to_transform(val, table=table, column=fname):
+                    total_skipped += 1
+                    continue
+                new_val = transform_html(val) if ftype == "html" else transform_plain(val)
             try:
                 rec.write({fname: new_val})
                 total_written += 1
