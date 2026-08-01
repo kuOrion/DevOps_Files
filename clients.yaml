@@ -103,3 +103,25 @@ clients:
     backup:
       daily_retention_days: 10
       monthly_snapshot_retention_months: 12
+
+  parus_instruments:
+    display_name: "Parus Instruments"
+    db_name: parus_instruments
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: cloud
+    onprem_tier: null
+    list_db: true             # flip to false once per-client HAProxy routing exists (milestone 6, planned for this client)
+    proxy_mode: false         # true once behind HAProxy (milestone 5, planned for this client)
+    workers: 2
+    cron_enabled: false       # sandbox-safety default - see 18dec's note above
+    http_port: 8079           # unique per client on one host - 18dec already uses 8069
+    longpolling_port: 8082
+    domain: null              # target once milestone 5 lands here: parusinstruments.erp16.orion-instruments.io
+    secrets_ref: /erp16-sandbox/parus_instruments   # sandbox SSM path prefix (see build/README.md); repointed at
+                                                     # the client's real AWS account once milestone 2 is production-ready
+    modules: []               # verified 2026-08-01 via ir_module_module state='installed' - core Odoo only,
+                               # zero custom Orion modules installed for this client
+    backup:
+      daily_retention_days: 10
+      monthly_snapshot_retention_months: 12
