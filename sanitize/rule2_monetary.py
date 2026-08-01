@@ -72,6 +72,28 @@ def _find_anchor_field(env, model_name: str, leaf_model_names: set) -> str:
     return candidates[0][0]
 
 
+# A real bug found via the actual before/after PDF comparison, not caught
+# by any of our earlier tests: discover_monetary_leaves() only scans
+# ttype=='monetary' fields, but the true leaf input driving sale/purchase/
+# invoice line pricing is `price_unit`, which is ttype='float' (confirmed
+# earlier, never wired into the production discovery). This meant
+# sale.order.line/purchase.order.line/account.move.line's price_subtotal/
+# price_total (correctly recognized as derived, correctly left alone) had
+# NOTHING upstream ever get scaled — real quotation/invoice amounts were
+# silently never touched at all. Checked for a fully mechanical signal
+# (Odoo's named decimal-precision `digits` profiles, which might have
+# distinguished "Product Price" from "Product Unit of Measure"/quantity)
+# but it wasn't cleanly accessible via the live field object. Falling back
+# to the same small, explicit, hands-on-validated approach already used for
+# the `mail.*` chatter models — these 3 are exactly the models our own
+# chain-1/chain-2 ORM-write tests proved correctly cascade through.
+EXTRA_LEAF_FIELDS = {
+    "sale.order.line": ["price_unit"],
+    "purchase.order.line": ["price_unit"],
+    "account.move.line": ["price_unit"],
+}
+
+
 def apply_rule2(env, batch_log_every=200):
     leaves, _derived = discover_monetary_leaves(env)
     leaf_model_names = set(m for m, f, ro in leaves)
@@ -79,6 +101,12 @@ def apply_rule2(env, batch_log_every=200):
     by_model = {}
     for model_name, fname, ro in leaves:
         by_model.setdefault(model_name, []).append(fname)
+    for model_name, fnames in EXTRA_LEAF_FIELDS.items():
+        by_model.setdefault(model_name, [])
+        for fname in fnames:
+            if fname not in by_model[model_name]:
+                by_model[model_name].append(fname)
+        leaf_model_names.add(model_name)
 
     anchor_fields = {m: _find_anchor_field(env, m, leaf_model_names) for m in by_model}
 
