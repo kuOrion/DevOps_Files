@@ -11,8 +11,15 @@ modules, not a hand-picked table list) and classifies each as:
     @api.depends graph will correctly recompute it once its leaf dependencies
     are scaled, however deep or module-specific the chain is.
 
-Excludes wizard models (_transient=True) and Odoo's own test-support models
-(name contains '.tests.') — neither is real persisted business data.
+Excludes wizard models (_transient=True), Odoo's own test-support models
+(name contains '.tests.'), and SQL-view-backed reporting models
+(_auto=False) — none of these are real writable business data. The
+_auto=False exclusion was added after hr.contract.history (a real leaf in
+the original scan) crashed Rule 2's apply script with a genuine Postgres
+error: "cannot update view hr_contract_history ... Views containing
+DISTINCT are not automatically updatable." Same class of gap Rule 1 had
+already found and fixed independently — worth keeping both discovery
+scripts' exclusions in sync.
 """
 
 def discover_monetary_leaves(env):
@@ -25,7 +32,7 @@ def discover_monetary_leaves(env):
             Model = env[model_name]
         except Exception:
             continue
-        if Model._transient:
+        if Model._transient or not Model._auto:
             continue
         for fname, f in Model._fields.items():
             if f.type == 'monetary' and f.store:
