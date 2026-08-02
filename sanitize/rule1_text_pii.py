@@ -202,12 +202,20 @@ def apply_rule1(env, batch_log_every=500):
                 new_val = transform_html(val) if ftype == "html" else transform_plain(val)
             try:
                 rec.write({fname: new_val})
+                env.cr.commit()  # commit immediately — a later rollback must
+                # never be able to discard this write. Batching commits every
+                # N writes was a real, serious bug: env.cr.rollback() undoes
+                # EVERYTHING uncommitted since the last checkpoint, not just
+                # the one record that failed, silently discarding legitimate
+                # prior successes (found via hr.employee.name/resource.
+                # resource.name still showing real names after a "clean"
+                # run — the writes happened, then got wiped by an unrelated
+                # later ir.attachment error's rollback, in the same batch).
                 total_written += 1
             except Exception:
                 env.cr.rollback()
                 total_errors += 1
             if total_written % batch_log_every == 0 and total_written:
-                env.cr.commit()
                 print(f"... {total_written} written so far ({model_name}.{fname})")
 
     env.cr.commit()

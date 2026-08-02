@@ -139,6 +139,8 @@ def apply_attachment_sanitization(env):
                 'UPDATE ir_attachment SET store_fname = %s, checksum = %s, file_size = %s WHERE id = %s',
                 (store_fname, checksum, size, att_id),
             )
+            env.cr.commit()  # immediately — same fix as Rule 1/2: a later
+            # record's rollback must never be able to discard this write.
             total_written += 1
         except Exception as e:
             env.cr.rollback()

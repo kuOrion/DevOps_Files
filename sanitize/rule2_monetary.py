@@ -142,6 +142,9 @@ def apply_rule2(env, batch_log_every=200):
 
             try:
                 rec.write(vals)
+                env.cr.commit()  # immediately — same fix as Rule 1: batched
+                # commits let one record's rollback silently discard prior
+                # successful writes in the same uncommitted window.
                 total_written += 1
             except Exception as e:
                 # Some models (e.g. a reconciled account.payment) block ORM
@@ -164,7 +167,6 @@ def apply_rule2(env, batch_log_every=200):
                     total_errors += 1
                     print(f"ERROR on {model_name}({rec.id}): {type(e).__name__}: {e} (fallback also failed: {e2})")
             if total_written % batch_log_every == 0 and total_written:
-                env.cr.commit()
                 print(f"... {total_written} written so far ({model_name})")
 
     env.cr.commit()
