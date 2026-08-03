@@ -15,9 +15,9 @@ Debug-by-default: prints every drop decision's reasoning, not just totals.
 import csv
 import re
 
-INPUT_CSV = "/home/cj/ERP16/build/sanitize/reports/pii_value_dictionary_raw.csv"
-OUTPUT_FULL = "/home/cj/ERP16/build/sanitize/reports/pii_dictionary_full.csv"
-OUTPUT_HUNT = "/home/cj/ERP16/build/sanitize/reports/pii_dictionary_substring_hunt.csv"
+INPUT_CSV = "/tmp/pii_value_dictionary.csv"
+OUTPUT_FULL = "/tmp/pii_dictionary_full.csv"
+OUTPUT_HUNT = "/tmp/pii_dictionary_substring_hunt.csv"
 
 # (table, column) pairs excluded entirely: security/credential fields (must
 # NOT be touched -- mutating breaks auth) and pure config/state/enum fields

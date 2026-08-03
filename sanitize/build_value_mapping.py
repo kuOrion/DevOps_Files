@@ -2,20 +2,51 @@
 Step 4: build the value -> transformed_value mapping, the master
 key/value dictionary everything downstream uses.
 
-Pure Python, no Odoo/DB dependency (transform_plain only needs hashlib/hmac/
-string) -- runs locally, no sandbox round-trip needed.
+Pure Python, no Odoo/DB dependency -- runs entirely server-side as part of
+run_pipeline.sh (no laptop round-trip needed; transform_plain is inlined
+directly here, matching substring_hunt_scan.py's own copy, so this file
+has zero dependency on anything outside the container it runs in).
 
 Debug-by-default: prints progress, dedup stats, sample entries, any value
 that fails to round-trip through the transform.
 """
 import csv
-import sys
+import hashlib
+import hmac
+import string
 
-sys.path.insert(0, "/home/cj/ERP16/build/sanitize")
-from rule1_text_pii import transform_plain  # noqa: E402
+SECRET_KEY = b"replace-with-a-real-secret-never-shipped-with-sanitized-data"
+_LOWER = string.ascii_lowercase
+_UPPER = string.ascii_uppercase
+_DIGITS = string.digits
 
-INPUT_CSV = "/home/cj/ERP16/build/sanitize/reports/pii_dictionary_full.csv"
-OUTPUT_CSV = "/home/cj/ERP16/build/sanitize/reports/pii_value_mapping.csv"
+
+def _keystream(value, length):
+    out = b""
+    counter = 0
+    while len(out) < length:
+        out += hmac.new(SECRET_KEY, value.encode("utf-8") + counter.to_bytes(4, "big"), hashlib.sha256).digest()
+        counter += 1
+    return out[:length]
+
+
+def transform_plain(value):
+    if not value:
+        return value
+    ks = _keystream(value, len(value))
+    out = []
+    for ch, kb in zip(value, ks):
+        if ch.isdigit():
+            out.append(_DIGITS[kb % 10])
+        elif ch.isalpha():
+            out.append(_UPPER[kb % 26] if ch.isupper() else _LOWER[kb % 26])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+INPUT_CSV = "/tmp/pii_dictionary_full.csv"
+OUTPUT_CSV = "/tmp/pii_value_mapping.csv"
 
 
 def main():

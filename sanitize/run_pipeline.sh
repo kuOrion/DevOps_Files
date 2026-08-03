@@ -40,6 +40,15 @@ for i in $(seq 1 30); do
     fi
 done
 
+echo "=== STEP 0c: build_pii_dictionary.py (dump real values from orion_test) ==="
+docker exec -e PYTHONUNBUFFERED=1 "$WEB" python3 -u /tmp/build_pii_dictionary.py
+
+echo "=== STEP 0d: filter_pii_dictionary.py (FULL + SUBSTRING-HUNT sets) ==="
+docker exec -e PYTHONUNBUFFERED=1 "$WEB" python3 -u /tmp/filter_pii_dictionary.py
+
+echo "=== STEP 0e: build_value_mapping.py (deterministic value -> transformed mapping) ==="
+docker exec -e PYTHONUNBUFFERED=1 "$WEB" python3 -u /tmp/build_value_mapping.py
+
 echo "=== STEP 1: write_pass.py (canonical field transforms + job title flattening) ==="
 docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d orm_test --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < /tmp/write_pass.py
 
