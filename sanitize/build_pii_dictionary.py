@@ -22,10 +22,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import psycopg2
 
-DB_HOST = "db_orion_test"
-DB_NAME = "orion_test"  # real source, not the scratch/sanitized copy
+import os
+
+# Resolved from env vars set by run_pipeline.sh (client-parameterized) --
+# fall back to the original orion_test-specific literals for standalone
+# runs outside the pipeline.
+DB_HOST = os.environ.get("DBHOST", "db_orion_test")
+DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")  # real source, not the scratch/sanitized copy
 DB_USER = "odoo"
-DB_PASSWORD = "F0aclHkVKiTxFwCHsf6UoS26"
+DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
 
 # Widened canonical identity-source tables (includes res_company + archived
 # rows, per the gaps found this session: resource_resource archived rows,

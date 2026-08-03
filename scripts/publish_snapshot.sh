@@ -16,19 +16,13 @@ set -euo pipefail
 
 CLIENT_ID="${1:?Usage: publish_snapshot.sh <client_id>}"
 
-# Sanitized source db name on the sandbox, per client. Only orion_test has
-# been through the pipeline so far -- add more entries here as other
-# clients get sanitized. Deliberately hardcoded, not derived from
-# clients.yaml's db_name, since the sanitized copy intentionally uses a
-# different db name (orm_test) to coexist with the real orion_test copy on
-# the sandbox's shared Postgres instance.
-declare -A SANITIZED_DB=(
-    [orion_test]=orm_test
-)
-SANITIZED_DB_NAME="${SANITIZED_DB[$CLIENT_ID]:-}"
-if [ -z "$SANITIZED_DB_NAME" ]; then
-    echo "ERROR: no sanitized snapshot mapping for client '$CLIENT_ID' -- has it been through build/sanitize/run_pipeline.sh?" >&2
-    exit 1
+# Shared with run_pipeline.sh -- one source of truth for the client ->
+# sanitized-db-name mapping instead of each script keeping its own copy
+# (found duplicated between the two, fixed during pipeline consolidation).
+source "$(dirname "${BASH_SOURCE[0]}")/../sanitize/pipeline_clients.sh"
+SANITIZED_DB_NAME=$(resolve_sanitized_db "$CLIENT_ID")
+if [ "$SANITIZED_DB_NAME" = "${CLIENT_ID}_san" ] && [ "$CLIENT_ID" != "orion_test" ]; then
+    echo "WARNING: no explicit sanitized-db mapping for '$CLIENT_ID' in pipeline_clients.sh -- assuming '${SANITIZED_DB_NAME}'. Confirm this matches what run_pipeline.sh actually created." >&2
 fi
 
 BUCKET="erp16-sandbox-snapshots"

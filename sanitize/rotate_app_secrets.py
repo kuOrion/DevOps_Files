@@ -21,14 +21,17 @@ Bulk SQL, no ORM -- these are plain config rows, no compute dependents.
 
 Debug-by-default: prints old/new values (secret itself is never printed).
 """
+import os
 import secrets as pysecrets
 
 import psycopg2
 
-DB_HOST = "db_orion_test"
-DB_NAME = "orm_test"
+# Resolved from env vars set by run_pipeline.sh (client-parameterized) --
+# fall back to the orion_test-specific literals for standalone runs.
+DB_HOST = os.environ.get("DBHOST", "db_orion_test")
+DB_NAME = os.environ.get("SANITIZED_DB_NAME", "orm_test")
 DB_USER = "odoo"
-DB_PASSWORD = "F0aclHkVKiTxFwCHsf6UoS26"
+DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
 
 SMTP_USER_PLACEHOLDER = "smtp-user@example.test"
 

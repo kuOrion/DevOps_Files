@@ -24,6 +24,7 @@ import csv
 import hashlib
 import hmac
 import json
+import os
 import re
 import string
 import time
@@ -62,10 +63,12 @@ def transform_plain(value):
             out.append(ch)
     return "".join(out)
 
-DB_HOST = "db_orion_test"
-DB_NAME = "orm_test"
+# Resolved from env vars set by run_pipeline.sh (client-parameterized) --
+# fall back to the orion_test-specific literals for standalone runs.
+DB_HOST = os.environ.get("DBHOST", "db_orion_test")
+DB_NAME = os.environ.get("SANITIZED_DB_NAME", "orm_test")
 DB_USER = "odoo"
-DB_PASSWORD = "F0aclHkVKiTxFwCHsf6UoS26"
+DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
 
 # Tables already handled directly by the step-5 write pass -- scanning them
 # too is cheap and serves as an extra correctness check, not skipped.

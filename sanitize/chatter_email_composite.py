@@ -20,16 +20,19 @@ pattern as chatter_bulk.py -- still no per-row ORM writes.
 Debug-by-default: prints every distinct value's parse + lookup result.
 """
 import csv
+import os
 import re
 import time
 
 import psycopg2
 from psycopg2.extras import execute_values
 
-DB_HOST = "db_orion_test"
-DB_NAME = "orm_test"
+# Resolved from env vars set by run_pipeline.sh (client-parameterized) --
+# fall back to the orion_test-specific literals for standalone runs.
+DB_HOST = os.environ.get("DBHOST", "db_orion_test")
+DB_NAME = os.environ.get("SANITIZED_DB_NAME", "orm_test")
 DB_USER = "odoo"
-DB_PASSWORD = "F0aclHkVKiTxFwCHsf6UoS26"
+DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
 
 MAPPING_CSV = "/tmp/pii_value_mapping.csv"
 
