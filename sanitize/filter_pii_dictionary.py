@@ -13,13 +13,17 @@ Two outputs:
 Debug-by-default: prints every drop decision's reasoning, not just totals.
 """
 import csv
+import os
 import re
 
 from pii_registry import EXCLUDE_FIELDS, RES_COMPANY_ALLOWED
 
-INPUT_CSV = "/tmp/pii_value_dictionary.csv"
-OUTPUT_FULL = "/tmp/pii_dictionary_full.csv"
-OUTPUT_HUNT = "/tmp/pii_dictionary_substring_hunt.csv"
+# Scoped by SOURCE_DB_NAME -- see build_pii_dictionary.py's OUTPUT_CSV
+# comment for why an unscoped shared path is unsafe.
+_DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")
+INPUT_CSV = f"/tmp/pii_value_dictionary_{_DB_NAME}.csv"
+OUTPUT_FULL = f"/tmp/pii_dictionary_full_{_DB_NAME}.csv"
+OUTPUT_HUNT = f"/tmp/pii_dictionary_substring_hunt_{_DB_NAME}.csv"
 
 
 def is_excluded(table, column):

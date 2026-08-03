@@ -39,7 +39,11 @@ DB_NAME = os.environ.get("SANITIZED_DB_NAME", "orm_test")
 DB_USER = "odoo"
 DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
 
-MAPPING_CSV = "/tmp/pii_value_mapping.csv"
+# Scoped by SOURCE_DB_NAME (the mapping is keyed by real values from the
+# source, not the sanitized target) -- see build_pii_dictionary.py's
+# OUTPUT_CSV comment for why an unscoped shared path is unsafe.
+_SOURCE_DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")
+MAPPING_CSV = f"/tmp/pii_value_mapping_{_SOURCE_DB_NAME}.csv"
 
 FLAT_PLACEHOLDER_FIELDS = [
     ("mail_message", "body", "<p>Test message content.</p>"),

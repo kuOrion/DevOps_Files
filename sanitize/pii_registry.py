@@ -250,6 +250,7 @@ KNOWN_DESTINATIONS = {
 EXCLUDE_DESTINATIONS = {
     ("crm_activity_report", "body"),           # SQL view over mail.message-adjacent source, not updatable, source already fixed
     ("account_account", "code"),               # chart-of-accounts code
+    ("account_analytic_account", "name"),      # found via parus_instruments: ALL rows create_uid=1 (Odoo's own shipped demo dataset -- "Deco Addict", "Asustek", "Nebula" etc, not real customers), coincidentally matched a real dictionary value
     ("account_payment_term", "note"),           # generic boilerplate
     ("helpdesk_ticket", "name"),                # coincidental job-title-phrase match ("Project manager rights"), not personal data -- moot now that job titles are excluded from the hunt-set
     ("hr_contract_type", "name"),               # category label (Consultant/Permanent/...)

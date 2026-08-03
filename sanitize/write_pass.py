@@ -14,14 +14,26 @@ no_vat_validation context flag for res.partner.vat.
 Debug-by-default: prints per-model progress, every error, final summary.
 """
 import csv
+import os
 import sys
 
-from pii_registry import TABLE_TO_MODEL, FLATTEN_FIELDS
+# This script runs via `odoo shell -d <db> ... < write_pass.py`, which
+# pipes its contents into exec(sys.stdin.read(), ...) -- NOT a normal file
+# execution, so Python never auto-adds /tmp to sys.path the way it would
+# for `python3 /tmp/write_pass.py`. Explicit insert needed, found via a
+# real ModuleNotFoundError on parus_instruments's first run (every other
+# pipeline script invoked as `python3 -u /tmp/script.py` didn't need this).
+sys.path.insert(0, "/tmp")
+from pii_registry import TABLE_TO_MODEL, FLATTEN_FIELDS  # noqa: E402
+
+# Scoped by SOURCE_DB_NAME -- see build_pii_dictionary.py's OUTPUT_CSV
+# comment for why an unscoped shared path is unsafe.
+_DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")
 
 
 def load_mapping():
     mapping = {}
-    with open("/tmp/pii_value_mapping.csv", newline="", encoding="utf-8") as f:
+    with open(f"/tmp/pii_value_mapping_{_DB_NAME}.csv", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             mapping[row["original_value"]] = row["transformed_value"]
@@ -32,7 +44,7 @@ def load_targets():
     """(model, field) pairs to write to, derived from the dictionary's
     (table, column) pairs, excluding hr_payslip."""
     targets = set()
-    with open("/tmp/pii_dictionary_full.csv", newline="", encoding="utf-8") as f:
+    with open(f"/tmp/pii_dictionary_full_{_DB_NAME}.csv", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             table, column = row["table"], row["column"]
@@ -107,6 +119,14 @@ def flatten_job_titles(env):
     a hardcoded per-model block each -- hr.job has no natural '!= False'
     filter (every row gets flattened), the rest do."""
     for (model_name, fname), literal in FLATTEN_FIELDS.items():
+        # Unlike main()'s write loop (naturally filtered to only models that
+        # actually had data in the dictionary), this runs unconditionally --
+        # env[model_name] raises a hard KeyError if the module providing
+        # that model isn't installed at all (found via parus_instruments,
+        # which has no HR module -- hr.job doesn't exist in its registry).
+        if model_name not in env.registry.models:
+            print(f"SKIP {model_name}.{fname}: model not installed on this client")
+            continue
         Model = env[model_name].with_context(active_test=False)
         recs = Model.search([(fname, '!=', False)])
         for r in recs:

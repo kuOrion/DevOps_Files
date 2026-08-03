@@ -87,13 +87,13 @@ docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SOU
     "$WEB" python3 -u /tmp/build_pii_dictionary.py
 
 echo "=== STEP 0d: filter_pii_dictionary.py (FULL + SUBSTRING-HUNT sets) ==="
-docker exec -e PYTHONUNBUFFERED=1 "$WEB" python3 -u /tmp/filter_pii_dictionary.py
+docker exec -e PYTHONUNBUFFERED=1 -e SOURCE_DB_NAME="$SOURCE_DB_NAME" "$WEB" python3 -u /tmp/filter_pii_dictionary.py
 
 echo "=== STEP 0e: build_value_mapping.py (deterministic value -> transformed mapping) ==="
-docker exec -e PYTHONUNBUFFERED=1 "$WEB" python3 -u /tmp/build_value_mapping.py
+docker exec -e PYTHONUNBUFFERED=1 -e SOURCE_DB_NAME="$SOURCE_DB_NAME" "$WEB" python3 -u /tmp/build_value_mapping.py
 
 echo "=== STEP 1: write_pass.py (canonical field transforms + job title flattening) ==="
-docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < /tmp/write_pass.py
+docker exec -e PYTHONUNBUFFERED=1 -e SOURCE_DB_NAME="$SOURCE_DB_NAME" -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < /tmp/write_pass.py
 
 echo "=== STEP 1b: reset admin login+password to a known dev value (technical account, not personal data) ==="
 docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http <<'EOF'
@@ -104,15 +104,15 @@ print(f"admin login reset: {u.login} (password also reset to a known dev value -
 EOF
 
 echo "=== STEP 2: chatter_email_composite.py (email_from/email_to/email_cc consistent identity) ==="
-docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" \
+docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" -e SOURCE_DB_NAME="$SOURCE_DB_NAME" \
     "$WEB" python3 -u /tmp/chatter_email_composite.py
 
 echo "=== STEP 3: chatter_bulk.py (flat placeholder + exact-match bulk fields) ==="
-docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" \
+docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" -e SOURCE_DB_NAME="$SOURCE_DB_NAME" \
     "$WEB" python3 -u /tmp/chatter_bulk.py
 
 echo "=== STEP 4: substring_hunt_scan.py (full-db verification + auto-fix, fixed qualification rule) ==="
-docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" \
+docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" -e SOURCE_DB_NAME="$SOURCE_DB_NAME" \
     "$WEB" python3 -u /tmp/substring_hunt_scan.py
 
 echo "=== STEP 5: rule_attachment.py (ir.attachment placeholder content) ==="

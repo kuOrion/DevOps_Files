@@ -33,7 +33,13 @@ DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")  # real source, not the
 DB_USER = "odoo"
 DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
 
-OUTPUT_CSV = "/tmp/pii_value_dictionary.csv"
+# Scoped by SOURCE_DB_NAME (client-specific) -- an unscoped shared path
+# caused a real PermissionError on parus_instruments's first run: a stale
+# file left over from an earlier manual `docker cp` (different owning uid)
+# blocked a later run from overwriting it. Client-scoped paths also
+# protect against genuinely concurrent/interleaved runs of two different
+# clients, not just accidental leftovers.
+OUTPUT_CSV = f"/tmp/pii_value_dictionary_{DB_NAME}.csv"
 
 
 def get_text_columns(conn, table):

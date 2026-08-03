@@ -72,10 +72,16 @@ DB_NAME = os.environ.get("SANITIZED_DB_NAME", "orm_test")
 DB_USER = "odoo"
 DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
 
+# Scoped by SOURCE_DB_NAME (the hunt-set is keyed by real values from the
+# source, not the sanitized target) -- see build_pii_dictionary.py's
+# OUTPUT_CSV comment for why an unscoped shared path is unsafe.
+_SOURCE_DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")
+HITS_CSV = f"/tmp/substring_hunt_hits_{_SOURCE_DB_NAME}.csv"
+
 
 def load_hunt_set():
     values = []
-    with open("/tmp/pii_dictionary_substring_hunt.csv", newline="", encoding="utf-8") as f:
+    with open(f"/tmp/pii_dictionary_substring_hunt_{_SOURCE_DB_NAME}.csv", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             values.append(row["value"])
@@ -241,14 +247,14 @@ def main():
         print(f"  {t}.{c} -- e.g. row {sample[2]}: {sample[3]!r}")
 
     # write out full hit report for review
-    with open("/tmp/substring_hunt_hits.csv", "w", newline="", encoding="utf-8") as f:
+    with open(HITS_CSV, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["table", "column", "row_id", "value", "matched_patterns", "known_destination"])
         for table, col, row_id, val, matches, lang in all_hits:
             matched_strs = "|".join(sorted(set(m for _, m in matches)))
             is_known = (table, col) in KNOWN_DESTINATIONS
             w.writerow([table, col, row_id, val, matched_strs, is_known])
-    print("Wrote /tmp/substring_hunt_hits.csv")
+    print(f"Wrote {HITS_CSV}")
 
     # auto-fix known destinations. jsonb (translated) columns need proper
     # json reconstruction, not a raw string UPDATE -- fetch the current full

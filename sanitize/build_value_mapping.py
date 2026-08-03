@@ -13,6 +13,7 @@ that fails to round-trip through the transform.
 import csv
 import hashlib
 import hmac
+import os
 import string
 
 SECRET_KEY = b"replace-with-a-real-secret-never-shipped-with-sanitized-data"
@@ -45,8 +46,11 @@ def transform_plain(value):
     return "".join(out)
 
 
-INPUT_CSV = "/tmp/pii_dictionary_full.csv"
-OUTPUT_CSV = "/tmp/pii_value_mapping.csv"
+# Scoped by SOURCE_DB_NAME -- see build_pii_dictionary.py's OUTPUT_CSV
+# comment for why an unscoped shared path is unsafe.
+_DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")
+INPUT_CSV = f"/tmp/pii_dictionary_full_{_DB_NAME}.csv"
+OUTPUT_CSV = f"/tmp/pii_value_mapping_{_DB_NAME}.csv"
 
 
 def main():
