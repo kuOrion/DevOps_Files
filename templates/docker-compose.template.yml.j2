@@ -10,7 +10,12 @@ services:
     restart: unless-stopped
 
   web_{{ client_id }}:
-    image: odoo:{{ odoo_version }}
+    build:
+      context: {{ docker_dir }}
+      dockerfile: Dockerfile.odoo
+      args:
+        ODOO_VERSION: "{{ odoo_version }}"
+    image: erp16-odoo:{{ odoo_version }}
     depends_on:
       - db_{{ client_id }}
     ports:

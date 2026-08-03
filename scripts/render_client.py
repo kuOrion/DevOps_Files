@@ -24,6 +24,7 @@ BUILD_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENTS_YAML = os.path.join(BUILD_DIR, "clients.yaml")
 TEMPLATES_DIR = os.path.join(BUILD_DIR, "templates")
 LOCAL_SECRETS = os.path.join(BUILD_DIR, "secrets.local.yaml")
+DOCKER_DIR = os.path.join(BUILD_DIR, "docker")
 
 
 def gen_password(length=24):
@@ -157,6 +158,7 @@ def main():
         "max_cron_threads": 1 if cfg.get("cron_enabled", False) else 0,
         "http_port": cfg["http_port"],
         "longpolling_port": cfg["longpolling_port"],
+        "docker_dir": DOCKER_DIR,
         "addons_host_path": args.addons_path or "/CHANGE_ME/addons",
         "config_host_path": args.config_path or os.path.join(out_dir, "config"),
         "db_password": db_password,

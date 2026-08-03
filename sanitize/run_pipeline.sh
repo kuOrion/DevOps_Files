@@ -43,12 +43,12 @@ done
 echo "=== STEP 1: write_pass.py (canonical field transforms + job title flattening) ==="
 docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d orm_test --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < /tmp/write_pass.py
 
-echo "=== STEP 1b: reset admin login (technical account, not personal data) ==="
+echo "=== STEP 1b: reset admin login+password to a known dev value (technical account, not personal data) ==="
 docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d orm_test --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http <<'EOF'
 u = env['res.users'].browse(2)
-u.write({'login': 'admin'})
+u.write({'login': 'admin', 'password': 'admin'})
 env.cr.commit()
-print(f"admin login reset: {u.login}")
+print(f"admin login reset: {u.login} (password also reset to a known dev value -- ORM write, properly hashed)")
 EOF
 
 echo "=== STEP 2: chatter_email_composite.py (email_from/email_to/email_cc consistent identity) ==="
@@ -62,6 +62,9 @@ docker exec -e PYTHONUNBUFFERED=1 "$WEB" python3 -u /tmp/substring_hunt_scan.py
 
 echo "=== STEP 5: rule_attachment.py (ir.attachment placeholder content) ==="
 docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d orm_test --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < /tmp/rule_attachment.py
+
+echo "=== STEP 5b: rotate_app_secrets.py (database.secret rotation, ir_mail_server credential blanking) ==="
+docker exec -e PYTHONUNBUFFERED=1 "$WEB" python3 -u /tmp/rotate_app_secrets.py
 
 echo "=== STEP 6: restart orm_test-web ==="
 docker start orm_test-web

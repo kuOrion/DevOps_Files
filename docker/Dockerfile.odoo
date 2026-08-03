@@ -1,0 +1,30 @@
+# Custom Odoo image, built once and reused (docker compose caches the
+# build, only rebuilds when this Dockerfile changes) -- bakes in Python
+# dependencies that installed Orion addons need but the stock odoo:16.0
+# image doesn't ship, so they're present from the container's very first
+# boot instead of needing a runtime pip install + restart every time.
+#
+# py3o.formats/py3o.template: report_py3o calls Formats() unconditionally
+# without checking whether the import succeeded -- missing this causes a
+# NameError on every request as soon as the module registry loads (first
+# hit as a real production outage, 2026-07-21; recurred identically on a
+# fresh dev-start.sh container, 2026-08-03). This is the permanent fix
+# CLAUDE.md called for instead of the runtime patch.
+#
+# py3o.fusion: found by build/scripts/check_missing_deps.py (scans every
+# installed module's __manifest__.py external_dependencies.python list
+# and checks importability) -- needed by 6 orion_* report modules
+# (Export_OA_report, grn_report, pr_ex_in_report, purchase_report,
+# sale_report, sample_invoice_report). Hadn't caused a visible outage yet
+# only because none of those specific reports had been generated -- same
+# latent-bug shape as py3o.formats, caught proactively this time instead
+# of reactively.
+#
+# Re-run check_missing_deps.py whenever the addons checkout changes, and
+# add any newly-declared-but-unmet dependency here -- this file is the
+# one place "known package gaps" live, not scattered runtime workarounds
+# in dev-start.sh/deploy.sh.
+ARG ODOO_VERSION=16.0
+FROM odoo:${ODOO_VERSION}
+
+RUN pip3 install --no-cache-dir py3o.formats py3o.template py3o.fusion
