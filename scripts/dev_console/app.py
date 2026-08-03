@@ -16,12 +16,15 @@ revert). It never pushes. Push stays a separate, deliberate action for
 the developer, every time, no exceptions.
 """
 import json
+import logging
 import os
 import subprocess
 import threading
 import time
 
 from flask import Flask, jsonify, request, Response
+
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 BUILD_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REPO_DIR = os.path.dirname(BUILD_DIR)
@@ -168,7 +171,20 @@ def api_git_status():
             if len(parts) >= 2:
                 added, removed = parts[0], parts[1]
         files.append({"code": code or "?", "path": path, "added": added, "removed": removed})
-    return jsonify({"branch": branch, "ahead": ahead, "files": files})
+    upstream_check = _git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    if upstream_check.returncode == 0:
+        unpushed = _git(["rev-list", "--count", "@{u}..HEAD"])
+        push_preview = f"{unpushed.stdout.strip()} commit(s) not yet on {upstream_check.stdout.strip()}"
+    else:
+        push_preview = f"Never pushed -- will create origin/{branch}"
+
+    return jsonify({
+        "repo": os.path.basename(ADDONS_DIR),
+        "branch": branch,
+        "ahead": ahead,
+        "files": files,
+        "push_preview": push_preview,
+    })
 
 
 @app.route("/api/git/log")

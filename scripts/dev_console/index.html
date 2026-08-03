@@ -92,8 +92,11 @@
       <div class="btn-row">
         <button onclick="toggleDiff()" id="diff-toggle-btn">Review diff</button>
         <button class="primary" onclick="doCommit()">Commit (local only, no push)</button>
-        <button onclick="doPush()">Push ↗</button>
       </div>
+    </div>
+    <div class="divider" id="push-box">
+      <div id="push-preview" style="font-size:13px; color:var(--text-secondary); margin-bottom:10px;"></div>
+      <button onclick="doPush()">Push ↗</button>
     </div>
   </div>
 
@@ -161,8 +164,10 @@ async function stopClient(id) {
 async function refreshGit() {
   const res = await fetch('/api/git/status');
   const data = await res.json();
+  document.getElementById('git-label').textContent = `Git — ${data.repo}`;
   document.getElementById('git-branch').textContent = data.branch;
   document.getElementById('git-ahead').textContent = data.ahead ? `${data.ahead} commits ahead of main` : '';
+  document.getElementById('push-preview').textContent = data.push_preview;
   const dirtyBadge = document.getElementById('git-dirty-badge');
   const commitBox = document.getElementById('commit-box');
   const filesDiv = document.getElementById('git-files');
