@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ERP16 dev console</title>
+<style>
+  :root {
+    --bg: #ffffff; --surface: #f7f7f5; --card: #ffffff;
+    --border: #e3e2de; --text: #1a1a18; --text-secondary: #6b6a65; --text-muted: #9b9a94;
+    --success-bg: #eaf3de; --success-text: #27500a;
+    --warning-bg: #faeeda; --warning-text: #854f0b;
+    --accent: #185fa5; --danger: #a32d2d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a; --surface: #262624; --card: #262624;
+      --border: #3a3a37; --text: #f0efec; --text-secondary: #b4b2a9; --text-muted: #888780;
+      --success-bg: #173404; --success-text: #c0dd97;
+      --warning-bg: #412402; --warning-text: #fac775;
+      --accent: #85b7eb; --danger: #f09595;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem; font-size: 14px; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .header h1 { font-size: 16px; font-weight: 500; margin: 0; }
+  .docker-status { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.up { background: #639922; } .dot.down { background: var(--danger); }
+  .section-label { font-size: 13px; color: var(--text-secondary); margin: 1.5rem 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; }
+  .card-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .card-title { font-weight: 500; font-size: 15px; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 6px; }
+  .badge.running { background: var(--success-bg); color: var(--success-text); }
+  .badge.stopped { background: var(--surface); color: var(--text-muted); }
+  .badge.warn { background: var(--warning-bg); color: var(--warning-text); }
+  .meta { font-size: 13px; color: var(--text-secondary); line-height: 1.9; }
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+  button { flex: 1; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+  button:hover { background: var(--surface); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  input[type=text] { width: 100%; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 10px; }
+  select { width: 100%; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .git-file { display: flex; justify-content: space-between; font-family: ui-monospace, monospace; font-size: 13px; padding: 3px 0; }
+  .code-added { color: #27500a; } .code-modified { color: #185fa5; } .code-deleted { color: var(--danger); }
+  .divider { border-top: 1px solid var(--border); margin: 12px 0; padding-top: 12px; }
+  .log { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-muted); max-height: 100px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px; }
+  .commits { background: var(--surface); border-radius: 8px; padding: 0.75rem 1rem; font-size: 13px; color: var(--text-secondary); line-height: 2; }
+  .commit-hash { color: var(--text-muted); font-family: ui-monospace, monospace; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>ERP16 dev console</h1>
+    <div style="display:flex; align-items:center; gap: 16px;">
+      <div class="docker-status" id="docker-status"><span class="dot" id="docker-dot"></span><span id="docker-text">checking docker...</span></div>
+      <button class="primary" onclick="openAddons()" style="flex: none;">Open custom addons</button>
+    </div>
+  </div>
+
+  <div class="section-label">Clients</div>
+  <div class="grid" id="clients-grid"></div>
+
+  <div class="section-label" id="git-label">Git</div>
+  <div class="card" id="git-card">
+    <div class="card-title-row">
+      <div style="font-size: 14px;"><span id="git-branch" style="font-weight:500;"></span> <span id="git-ahead" style="color:var(--text-muted); font-size:13px;"></span></div>
+      <span class="badge warn" id="git-dirty-badge" style="display:none;"></span>
+    </div>
+    <div id="git-files"></div>
+    <div class="divider" id="commit-box" style="display:none;">
+      <input type="text" id="commit-msg" placeholder="Describe what changed">
+      <div class="btn-row">
+        <button onclick="reviewDiff()">Review diff</button>
+        <button class="primary" onclick="doCommit()">Commit (local only, no push)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Recent commits</div>
+  <div class="commits" id="commits-list"></div>
+</div>
+
+<script>
+const ADDONS_DIR = "__ADDONS_DIR__";
+
+async function openAddons() {
+  await fetch('/api/open-addons', {method: 'POST'});
+}
+
+async function refreshClients() {
+  const res = await fetch('/api/clients');
+  const data = await res.json();
+  const grid = document.getElementById('clients-grid');
+  grid.innerHTML = '';
+
+  const runningCards = data.clients.filter(c => c.running);
+  const stoppedIds = data.clients.filter(c => !c.running).map(c => c.client_id);
+
+  for (const c of runningCards) {
+    const job = data.jobs[c.client_id];
+    const busy = job && job.state === 'running';
+    grid.innerHTML += `
+      <div class="card">
+        <div class="card-title-row">
+          <span class="card-title">${c.display_name}</span>
+          <span class="badge running">Running</span>
+        </div>
+        <div class="meta">
+          <div><a href="${c.url}" target="_blank">${c.url}</a></div>
+        </div>
+        <div class="btn-row">
+          <button onclick="window.open('${c.url}')">Open</button>
+          <button onclick="stopClient('${c.client_id}')" ${busy ? 'disabled' : ''}>${busy ? 'Working...' : 'Stop'}</button>
+        </div>
+        ${busy ? `<div class="log">${(job.log || []).slice(-6).join('\\n')}</div>` : ''}
+      </div>`;
+  }
+
+  let options = stoppedIds.map(id => `<option value="${id}">${id}</option>`).join('');
+  const anyBusy = Object.values(data.jobs).some(j => j.state === 'running');
+  grid.innerHTML += `
+    <div class="card" style="border-style:dashed; display:flex; flex-direction:column; justify-content:center; gap:10px;">
+      <select id="client-picker">${options}</select>
+      <button class="primary" onclick="startClient()" ${anyBusy || !stoppedIds.length ? 'disabled' : ''}>Start client</button>
+    </div>`;
+}
+
+async function startClient() {
+  const id = document.getElementById('client-picker').value;
+  await fetch(`/api/start/${id}`, {method: 'POST'});
+  refreshClients();
+}
+
+async function stopClient(id) {
+  await fetch(`/api/stop/${id}`, {method: 'POST'});
+  refreshClients();
+  refreshGit();
+}
+
+async function refreshGit() {
+  const res = await fetch('/api/git/status');
+  const data = await res.json();
+  document.getElementById('git-branch').textContent = data.branch;
+  document.getElementById('git-ahead').textContent = data.ahead ? `${data.ahead} commits ahead of main` : '';
+  const dirtyBadge = document.getElementById('git-dirty-badge');
+  const commitBox = document.getElementById('commit-box');
+  const filesDiv = document.getElementById('git-files');
+  if (data.files.length) {
+    dirtyBadge.style.display = 'inline-block';
+    dirtyBadge.textContent = `${data.files.length} uncommitted`;
+    commitBox.style.display = 'block';
+    filesDiv.innerHTML = data.files.map(f => {
+      const cls = f.code.includes('A') ? 'code-added' : f.code.includes('D') ? 'code-deleted' : 'code-modified';
+      return `<div class="git-file"><span><span class="${cls}">${f.code}</span>&nbsp;&nbsp;${f.path}</span><span style="color:var(--text-muted)">+${f.added} -${f.removed}</span></div>`;
+    }).join('');
+  } else {
+    dirtyBadge.style.display = 'none';
+    commitBox.style.display = 'none';
+    filesDiv.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Working tree clean</div>';
+  }
+}
+
+function reviewDiff() {
+  alert('Would open `git diff` in your terminal/editor of choice -- not wired up in this MVP.');
+}
+
+async function doCommit() {
+  const message = document.getElementById('commit-msg').value.trim();
+  if (!message) return;
+  const res = await fetch('/api/git/commit', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({message}),
+  });
+  if (res.ok) {
+    document.getElementById('commit-msg').value = '';
+    refreshGit();
+    refreshCommits();
+  } else {
+    const err = await res.json();
+    alert('Commit failed: ' + (err.error || 'unknown error'));
+  }
+}
+
+async function refreshCommits() {
+  const res = await fetch('/api/git/log');
+  const data = await res.json();
+  const el = document.getElementById('commits-list');
+  el.innerHTML = data.commits.map(c =>
+    `<div><span class="commit-hash">${c.hash}</span>&nbsp;&nbsp;${c.subject}&nbsp;&nbsp;<span style="color:var(--text-muted)">${c.when}</span></div>`
+  ).join('') || '<div style="color:var(--text-muted)">No commits yet</div>';
+}
+
+async function refreshDockerStatus() {
+  try {
+    const res = await fetch('/api/clients');
+    document.getElementById('docker-dot').className = 'dot up';
+    document.getElementById('docker-text').textContent = 'Docker running';
+  } catch (e) {
+    document.getElementById('docker-dot').className = 'dot down';
+    document.getElementById('docker-text').textContent = 'Docker unreachable';
+  }
+}
+
+function refreshAll() {
+  refreshDockerStatus();
+  refreshClients();
+  refreshGit();
+  refreshCommits();
+}
+
+refreshAll();
+setInterval(refreshAll, 3000);
+</script>
+</body>
+</html>
