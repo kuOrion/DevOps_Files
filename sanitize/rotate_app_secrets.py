@@ -52,6 +52,50 @@ def main():
     print(f"ir_mail_server.smtp_user/smtp_pass: {cur.rowcount} row(s) blanked to placeholder")
     conn.commit()
 
+    # from_filter holds the SAME real email independently of smtp_user --
+    # found via a full ir_mail_server column review, missed by the original
+    # fix which only touched smtp_user/smtp_pass.
+    cur.execute(
+        "UPDATE ir_mail_server SET from_filter = %s WHERE from_filter IS NOT NULL",
+        (SMTP_USER_PLACEHOLDER,),
+    )
+    print(f"ir_mail_server.from_filter: {cur.rowcount} row(s) blanked to placeholder")
+    conn.commit()
+
+    # Found via a full ir_config_parameter review: a LIVE Google OAuth
+    # client secret (GOCSPX-... -- Google's own real-credential prefix) and
+    # its paired client id, plus a third copy of the same real company
+    # email as mail.default.from. None of these were ever in scope for
+    # substring_hunt_scan.py (blanket ir_* exclusion).
+    cur.execute(
+        "UPDATE ir_config_parameter SET value = %s WHERE key = 'google_gmail_client_secret' AND value IS NOT NULL AND value != ''",
+        ("placeholder-client-secret",),
+    )
+    print(f"google_gmail_client_secret: {cur.rowcount} row(s) blanked")
+    cur.execute(
+        "UPDATE ir_config_parameter SET value = %s WHERE key = 'google_gmail_client_id' AND value IS NOT NULL AND value != ''",
+        ("placeholder-client-id.apps.googleusercontent.com",),
+    )
+    print(f"google_gmail_client_id: {cur.rowcount} row(s) blanked")
+    cur.execute(
+        "UPDATE ir_config_parameter SET value = %s WHERE key = 'mail.default.from' AND value IS NOT NULL",
+        (SMTP_USER_PLACEHOLDER,),
+    )
+    print(f"mail.default.from: {cur.rowcount} row(s) blanked to placeholder")
+    conn.commit()
+
+    # Dormant staging keys from the 2026-07-21 incident (_bd_*-equivalent
+    # naming pattern _mb*/_mcb64/_se_*) -- confirmed empty/inert in
+    # CLAUDE.md's incident record, deliberately left in place on production
+    # at the time and "deferred to the redesign's fuller sweep." This
+    # redesign is that sweep -- delete them outright rather than let
+    # evidence-adjacent key names persist into every dev snapshot.
+    cur.execute(
+        "DELETE FROM ir_config_parameter WHERE key ~ '^_(mb[0-9]+|mcb[0-9]+|se_[0-9a-f]+)$'"
+    )
+    print(f"dormant staging keys (_mb*/_mcb*/_se_*): {cur.rowcount} row(s) deleted")
+    conn.commit()
+
     cur.close()
     conn.close()
 

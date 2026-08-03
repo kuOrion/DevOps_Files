@@ -150,6 +150,25 @@ def apply_attachment_sanitization(env):
     env.cr.commit()
     print(f"Attachment sanitization done: {total_written} written, {total_errors} errors")
     print(f"Distinct placeholders written: {list(cache.keys())}")
+
+    # ir_attachment.index_content is Odoo's cached full-text-search extraction
+    # of the file's content -- a SEPARATE field from the actual file bytes,
+    # populated once when the file is first indexed and never touched again
+    # by anything above. Replacing the file content does NOT clear this --
+    # confirmed via a real, serious leak: a genuine customer PO's fully
+    # readable extracted text (company name, address, email, CIN number)
+    # was still sitting here in plain text after the file-content swap,
+    # because substring_hunt_scan.py blanket-excludes every ir_* table.
+    # Same create_uid != 1 gate as the file-content rule above -- system-
+    # shipped attachments (create_uid = 1) never hold real business content
+    # to begin with, so their index_content is left alone.
+    env.cr.execute(
+        "UPDATE ir_attachment SET index_content = NULL WHERE create_uid != 1 AND index_content IS NOT NULL"
+    )
+    index_content_cleared = env.cr.rowcount
+    env.cr.commit()
+    print(f"ir_attachment.index_content: {index_content_cleared} row(s) cleared")
+
     return total_written, total_errors
 
 
