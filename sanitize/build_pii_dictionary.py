@@ -15,6 +15,7 @@ Debug-by-default: prints progress/counts per table, never swallows errors
 silently.
 """
 import csv
+import os
 import sys
 import time
 import traceback
@@ -22,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import psycopg2
 
-import os
+from pii_registry import CANONICAL_TABLES
 
 # Resolved from env vars set by run_pipeline.sh (client-parameterized) --
 # fall back to the original orion_test-specific literals for standalone
@@ -31,25 +32,6 @@ DB_HOST = os.environ.get("DBHOST", "db_orion_test")
 DB_NAME = os.environ.get("SOURCE_DB_NAME", "orion_test")  # real source, not the scratch/sanitized copy
 DB_USER = "odoo"
 DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
-
-# Widened canonical identity-source tables (includes res_company + archived
-# rows, per the gaps found this session: resource_resource archived rows,
-# res_company letterhead, hr_payslip denormalized names — this table list
-# itself will keep growing as the dictionary-driven scan finds more sources).
-CANONICAL_TABLES = [
-    "res_partner",
-    "hr_employee",
-    "hr_contract",
-    "res_users",
-    "res_partner_bank",
-    "resource_resource",
-    "res_company",
-    "hr_payslip",  # denormalized name field found this session
-    "stock_warehouse",  # real brand/company name found embedded here (PO shipping address)
-    "res_country",  # geographic reference data user wants scrubbed too, not just PII
-    "res_country_state",
-    "res_bank",  # bank institution name (distinct from res.partner.bank, the customer's account link)
-]
 
 OUTPUT_CSV = "/tmp/pii_value_dictionary.csv"
 

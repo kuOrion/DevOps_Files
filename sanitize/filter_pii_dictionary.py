@@ -15,92 +15,11 @@ Debug-by-default: prints every drop decision's reasoning, not just totals.
 import csv
 import re
 
+from pii_registry import EXCLUDE_FIELDS, RES_COMPANY_ALLOWED
+
 INPUT_CSV = "/tmp/pii_value_dictionary.csv"
 OUTPUT_FULL = "/tmp/pii_dictionary_full.csv"
 OUTPUT_HUNT = "/tmp/pii_dictionary_substring_hunt.csv"
-
-# (table, column) pairs excluded entirely: security/credential fields (must
-# NOT be touched -- mutating breaks auth) and pure config/state/enum fields
-# with zero identity content.
-EXCLUDE_FIELDS = {
-    # security/credentials -- never touch
-    ("res_users", "password"),
-    ("res_users", "oauth_access_token"),
-    ("res_users", "totp_secret"),
-    ("res_partner", "signup_token"),
-    ("res_users", "odoobot_state"),
-    # config/enum/workflow-state, not identity
-    ("res_partner", "type"),
-    ("res_partner", "tz"),
-    ("res_partner", "lang"),
-    ("res_partner", "seo_name"),
-    ("res_partner", "signup_type"),
-    ("res_partner", "l10n_in_gst_treatment"),
-    ("res_partner", "invoice_warn"),
-    ("res_partner", "picking_warn"),
-    ("res_partner", "purchase_warn"),
-    ("res_partner", "sale_warn"),
-    ("res_partner", "invoice_warn_msg"),
-    ("res_partner", "picking_warn_msg"),
-    ("res_partner", "purchase_warn_msg"),
-    ("res_partner", "sale_warn_msg"),
-    ("res_partner", "followup_status"),
-    ("res_partner", "website_description"),
-    ("res_partner", "website_meta_description"),
-    ("res_partner", "website_meta_keywords"),
-    ("res_partner", "website_meta_og_img"),
-    ("res_partner", "website_meta_title"),
-    ("res_partner", "website_short_description"),
-    ("res_users", "notification_type"),
-    ("hr_employee", "employee_type"),
-    ("hr_employee", "gender"),
-    ("hr_employee", "marital"),
-    ("hr_employee", "certificate"),
-    ("resource_resource", "resource_type"),
-    ("resource_resource", "tz"),
-    ("hr_contract", "kanban_state"),
-    ("hr_contract", "schedule_pay"),
-    ("hr_contract", "state"),
-    ("hr_payslip", "state"),
-    ("hr_payslip", "number"),  # sequence code like SLIP/001, not identifying
-    # stock.warehouse: workflow-config enums, not identity
-    ("stock_warehouse", "delivery_steps"),
-    ("stock_warehouse", "manufacture_steps"),
-    ("stock_warehouse", "reception_steps"),
-    # res.country / res.country.state: formatting templates and labels, not identity
-    ("res_country", "address_format"),
-    ("res_country", "name_position"),
-    ("res_country", "vat_label"),
-    ("res_country_state", "l10n_in_tin"),  # India GST state-code reference, not identity
-    # 2-letter country/state codes: low-entropy (26x26 space), scrambling
-    # them causes frequent unique-constraint collisions (330 errors/run,
-    # confirmed consistent) for essentially no privacy benefit -- knowing a
-    # partner is associated with "MH" (Maharashtra) isn't identifying on its
-    # own. Left real, not transformed, not hunted.
-    ("res_country", "code"),
-    ("res_country_state", "code"),
-    # job title/designation -- flattened to a literal placeholder instead of
-    # scrambled (write_pass.py's flatten_job_titles), same treatment for
-    # hr.job.name/hr.employee.job_title/res.partner.function -- exclude from
-    # the scramble pass AND the hunt-set entirely. Real titles are common
-    # English phrases ("Project Manager", "Production") that cause
-    # coincidental substring collisions elsewhere (e.g. helpdesk_ticket.name
-    # containing "Project manager rights") once hunted for -- now moot since
-    # they're flattened at the source instead of preserved-and-searched-for.
-    ("hr_employee", "job_title"),
-    ("res_partner", "function"),
-    # res_company: drop the ~48 onboarding/state/config columns, keep only
-    # genuinely identity-bearing ones (handled by ALLOW-list below instead
-    # of enumerating every exclusion -- see res_company handling)
-}
-
-# res_company has ~57 columns, almost all onboarding-wizard state flags.
-# Allowlist the genuinely identity-bearing ones instead of excluding each
-# state column individually.
-RES_COMPANY_ALLOWED = {
-    "name", "email", "phone", "mobile", "company_details",
-    "invoice_terms_html", "report_footer", "report_header",
-}
 
 
 def is_excluded(table, column):

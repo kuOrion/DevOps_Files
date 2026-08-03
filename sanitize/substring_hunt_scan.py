@@ -34,6 +34,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import ahocorasick
 import psycopg2
 
+from pii_registry import KNOWN_DESTINATIONS, EXCLUDE_DESTINATIONS, EXCLUDE_TABLES_PREFIX
+
 SECRET_KEY = b"replace-with-a-real-secret-never-shipped-with-sanitized-data"
 _LOWER = string.ascii_lowercase
 _UPPER = string.ascii_uppercase
@@ -69,128 +71,6 @@ DB_HOST = os.environ.get("DBHOST", "db_orion_test")
 DB_NAME = os.environ.get("SANITIZED_DB_NAME", "orm_test")
 DB_USER = "odoo"
 DB_PASSWORD = os.environ.get("DBPASS", "F0aclHkVKiTxFwCHsf6UoS26")
-
-# Tables already handled directly by the step-5 write pass -- scanning them
-# too is cheap and serves as an extra correctness check, not skipped.
-CANONICAL_TABLES = {
-    "res_partner", "hr_employee", "hr_contract", "res_users",
-    "res_partner_bank", "resource_resource", "res_company",
-}
-
-# Persisted registry of (table, column) pairs already reviewed and approved
-# as legitimate denormalization-copy destinations. Only a hit OUTSIDE this
-# set triggers a review flag -- this is the one place a human/LLM ever
-# needs to look, and it should shrink toward empty over time as more of
-# the schema gets reviewed once.
-KNOWN_DESTINATIONS = {
-    ("hr_payslip", "name"),
-    ("account_move", "l10n_in_gstin"),
-    ("account_move_line", "name"),
-    ("calendar_event", "description"),
-    ("calendar_event", "name"),
-    ("crm_lead", "city"),
-    ("crm_lead", "contact_name"),
-    ("crm_lead", "description"),
-    ("crm_lead", "function"),
-    ("crm_lead", "mobile"),
-    ("crm_lead", "name"),
-    ("crm_lead", "partner_name"),
-    ("crm_lead", "phone_sanitized"),
-    ("crm_lead", "street"),
-    ("crm_lead", "street2"),
-    ("crm_lead", "website"),
-    ("crm_lead", "zip"),
-    ("crm_sales_visit", "discussion"),
-    ("crm_sales_visit", "purpose"),
-    ("document_page", "template"),
-    ("document_page_history", "content"),
-    ("helpdesk_ticket", "description"),
-    ("hr_resume_line", "name"),
-    ("mail_activity", "note"),
-    ("mail_activity", "res_name"),
-    ("mail_activity", "summary"),
-    ("mail_mail", "body_html"),
-    ("mail_mail", "email_to"),
-    ("mail_message", "body"),
-    ("mail_message", "email_from"),
-    ("mail_message", "record_name"),
-    ("mail_message", "reply_to"),
-    ("mail_message", "subject"),
-    ("mail_notification", "sms_number"),
-    ("mail_tracking_value", "new_value_char"),
-    ("mail_tracking_value", "old_value_char"),
-    ("mailing_contact", "email"),
-    ("mailing_contact", "email_normalized"),
-    ("mailing_contact", "name"),
-    ("mrp_production", "customer_name"),
-    ("project_project", "description"),
-    ("project_task", "description"),
-    ("project_task", "name"),
-    ("purchase_order", "note"),
-    ("purchase_order_line", "specification"),
-    ("res_bank", "account_number"),
-    ("res_bank", "street"),
-    ("res_company", "invoice_terms_html"),
-    ("res_company", "report_footer"),
-    ("res_partner", "mobile"),
-    ("res_partner", "street"),
-    ("res_partner", "street_name"),
-    ("res_partner_title", "name"),
-    ("sale_order", "customer_po_number"),
-    ("sale_order", "origin"),
-    ("sale_order", "your_reference"),
-    ("sh_access_manager", "name"),
-    ("sms_sms", "body"),
-    ("sms_sms", "number"),
-    ("stock_move", "origin"),
-    ("stock_picking", "origin"),
-    ("survey_user_input", "email"),
-    ("survey_user_input", "nickname"),
-    ("stock_route", "name"),  # auto-generated from warehouse name, e.g. "Orion Instruments, Pune: Cross-Dock"
-}
-
-# Reference/technical/category data that coincidentally matched a hunt
-# pattern but is NOT personal or company identity -- permanently excluded
-# so the scan stops re-flagging it every run. Reviewed once, remembered.
-EXCLUDE_DESTINATIONS = {
-    ("crm_activity_report", "body"),           # SQL view over mail.message-adjacent source, not updatable, source already fixed
-    ("account_account", "code"),               # chart-of-accounts code
-    ("account_payment_term", "note"),           # generic boilerplate
-    ("helpdesk_ticket", "name"),                # coincidental job-title-phrase match ("Project manager rights"), not personal data -- moot now that job titles are excluded from the hunt-set
-    ("hr_contract_type", "name"),               # category label (Consultant/Permanent/...)
-    ("hr_department", "name"),                  # org-structure category label
-    ("hr_department", "complete_name"),
-    ("hr_job", "name"),                         # job-position category label
-    ("l10n_in_port_code", "name"),              # public port reference list
-    ("mail_channel", "name"),                   # system labels (OdooBot, Administrator)
-    ("mail_channel_member", "custom_channel_name"),
-    ("mail_message", "message_id"),             # auto-generated internal id
-    ("mail_mail", "references"),                # auto-generated internal id
-    ("mail_template", "body_html"),             # Odoo's own stock demo placeholder text
-    ("mail_tracking_value", "field_desc"),      # field/role label, not an individual
-    ("mrp_bom_line", "product_internal_reference"),  # product code
-    ("product_attribute_value", "name"),        # product config option label
-    ("product_attribute_value", "description"),
-    ("product_product", "default_code"),        # product SKU code
-    ("product_template", "default_code"),
-    ("product_template", "name"),               # product model number, not identity
-    ("product_template_attribute_value", "description"),
-    ("report_project_task_user", "name"),       # SQL view over project_task, not updatable
-    ("res_country", "name"),                    # static reference table
-    ("res_country_state", "code"),
-    ("res_country_state", "name"),
-    ("res_groups", "comment"),                  # generic system documentation text
-    ("res_groups", "name"),                     # system permission group name
-    ("sale_order", "port_of_discharge"),        # shipping port reference
-    ("sale_order_line", "name"),                # product code
-    ("sh_product_template_attribute_value_line", "name"),
-    ("sh_product_template_attribute_value_line", "description"),
-    ("sh_product_variant_spec_line", "sh_value"),
-    ("stock_location", "barcode"),              # internal warehouse code
-    ("stock_lot", "name"),                      # lot/batch number
-}
-
-EXCLUDE_TABLES_PREFIX = ("ir_", "base_import_")  # framework/technical, not business data
 
 
 def load_hunt_set():

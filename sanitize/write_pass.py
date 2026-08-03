@@ -16,21 +16,7 @@ Debug-by-default: prints per-model progress, every error, final summary.
 import csv
 import sys
 
-TABLE_TO_MODEL = {
-    "res_partner": "res.partner",
-    "hr_employee": "hr.employee",
-    "hr_contract": "hr.contract",
-    "res_users": "res.users",
-    "res_partner_bank": "res.partner.bank",
-    "resource_resource": "resource.resource",
-    "res_company": "res.company",
-    "stock_warehouse": "stock.warehouse",
-    "res_country": "res.country",
-    "res_country_state": "res.country.state",
-    "res_bank": "res.bank",
-    # hr_payslip deliberately excluded -- composite field, handled by
-    # step 6 substring-hunt instead, not a whole-value write target.
-}
+from pii_registry import TABLE_TO_MODEL, FLATTEN_FIELDS
 
 
 def load_mapping():
@@ -116,31 +102,17 @@ def flatten_job_titles(env):
     """Job titles/designations get flattened to a single fixed value, not
     scrambled -- zero distinction between employees eliminates the
     re-identification risk from a rare/unique title entirely, cleaner than
-    trying to judge which titles are 'safe' to leave real."""
-    hr_job = env['hr.job'].with_context(active_test=False).search([])
-    for j in hr_job:
-        j.write({'name': 'Employee'})
-    env.cr.commit()
-    print(f"hr.job: {len(hr_job)} flattened to 'Employee'")
-
-    employees = env['hr.employee'].with_context(active_test=False).search([('job_title', '!=', False)])
-    for e in employees:
-        e.write({'job_title': 'Employee'})
-    env.cr.commit()
-    print(f"hr.employee.job_title: {len(employees)} flattened to 'Employee'")
-
-    # res.partner.function is an EXTERNAL contact's designation (customer/
-    # vendor staff -- Purchase Manager, Director, etc, not Orion's own
-    # employees), so it gets its own placeholder rather than "Employee" --
-    # also flattens away several rows where a real person's name was typed
-    # directly into this field by data-entry error (e.g. "mahesh bhogade",
-    # "Dinesh Mishra- Director"), a leak class no scramble transform would
-    # have reliably caught.
-    partners = env['res.partner'].with_context(active_test=False).search([('function', '!=', False)])
-    for p in partners:
-        p.write({'function': 'Contact'})
-    env.cr.commit()
-    print(f"res.partner.function: {len(partners)} flattened to 'Contact'")
+    trying to judge which titles are 'safe' to leave real. Iterates
+    FLATTEN_FIELDS from the shared registry (pii_registry.py) rather than
+    a hardcoded per-model block each -- hr.job has no natural '!= False'
+    filter (every row gets flattened), the rest do."""
+    for (model_name, fname), literal in FLATTEN_FIELDS.items():
+        Model = env[model_name].with_context(active_test=False)
+        recs = Model.search([(fname, '!=', False)])
+        for r in recs:
+            r.write({fname: literal})
+        env.cr.commit()
+        print(f"{model_name}.{fname}: {len(recs)} flattened to '{literal}'")
 
 
 if __name__ == "__main__":
