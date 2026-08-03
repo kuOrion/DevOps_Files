@@ -25,7 +25,13 @@ from flask import Flask, jsonify, request, Response
 
 BUILD_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REPO_DIR = os.path.dirname(BUILD_DIR)
-ADDONS_DIR = os.path.join(os.path.dirname(REPO_DIR), "erp16-custom-addons")
+# Override for testing/demo -- e.g. pointing at a throwaway repo instead
+# of the real erp16-custom-addons checkout, so push can be exercised
+# safely. Normal operation never sets this.
+ADDONS_DIR = os.environ.get(
+    "DEV_CONSOLE_ADDONS_DIR",
+    os.path.join(os.path.dirname(REPO_DIR), "erp16-custom-addons"),
+)
 CLIENTS_YAML = os.path.join(BUILD_DIR, "clients.yaml")
 DEV_START = os.path.join(BUILD_DIR, "scripts", "dev-start.sh")
 
@@ -188,6 +194,43 @@ def api_git_commit():
     return jsonify({"ok": True})
 
 
+@app.route("/api/git/diff")
+def api_git_diff():
+    diff = _git(["diff", "HEAD"])
+    return jsonify({"diff": diff.stdout})
+
+
+@app.route("/api/git/branches")
+def api_git_branches():
+    current = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    result = _git(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])
+    branches = [b for b in result.stdout.strip().splitlines() if b]
+    return jsonify({"current": current, "branches": branches})
+
+
+@app.route("/api/git/checkout", methods=["POST"])
+def api_git_checkout():
+    branch = request.json.get("branch", "").strip()
+    is_new = request.json.get("new", False)
+    if not branch:
+        return jsonify({"error": "branch name required"}), 400
+    committed = _auto_commit_if_dirty(f"branch switch to {branch}")
+    args = ["checkout", "-b", branch] if is_new else ["checkout", branch]
+    result = _git(args)
+    if result.returncode != 0:
+        return jsonify({"error": result.stdout + result.stderr, "committed": committed}), 400
+    return jsonify({"ok": True, "committed": committed})
+
+
+@app.route("/api/git/push", methods=["POST"])
+def api_git_push():
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    result = _git(["push", "-u", "origin", branch])
+    if result.returncode != 0:
+        return jsonify({"error": result.stdout + result.stderr}), 400
+    return jsonify({"ok": True, "output": result.stdout + result.stderr})
+
+
 @app.route("/api/open-addons", methods=["POST"])
 def api_open_addons():
     subprocess.Popen(["xdg-open", ADDONS_DIR])
@@ -202,6 +245,7 @@ def index():
 
 
 if __name__ == "__main__":
-    print(f"ERP16 dev console: http://127.0.0.1:5151")
+    port = int(os.environ.get("DEV_CONSOLE_PORT", 5151))
+    print(f"ERP16 dev console: http://127.0.0.1:{port}")
     print(f"Addons checkout: {ADDONS_DIR}")
-    app.run(host="127.0.0.1", port=5151, debug=False)
+    app.run(host="127.0.0.1", port=port, debug=False)

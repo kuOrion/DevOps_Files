@@ -49,6 +49,8 @@
   .code-added { color: #27500a; } .code-modified { color: #185fa5; } .code-deleted { color: var(--danger); }
   .divider { border-top: 1px solid var(--border); margin: 12px 0; padding-top: 12px; }
   .log { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-muted); max-height: 100px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px; }
+  .diff-view { font-family: ui-monospace, monospace; font-size: 12px; background: var(--surface); border-radius: 8px; padding: 0.75rem 1rem; max-height: 320px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 10px; }
+  .diff-add { color: #27500a; } .diff-del { color: var(--danger); } .diff-hunk { color: var(--accent); }
   .commits { background: var(--surface); border-radius: 8px; padding: 0.75rem 1rem; font-size: 13px; color: var(--text-secondary); line-height: 2; }
   .commit-hash { color: var(--text-muted); font-family: ui-monospace, monospace; }
   a { color: var(--accent); }
@@ -70,15 +72,27 @@
   <div class="section-label" id="git-label">Git</div>
   <div class="card" id="git-card">
     <div class="card-title-row">
-      <div style="font-size: 14px;"><span id="git-branch" style="font-weight:500;"></span> <span id="git-ahead" style="color:var(--text-muted); font-size:13px;"></span></div>
+      <div style="font-size: 14px; display:flex; align-items:center; gap:10px;">
+        <span id="git-branch" style="font-weight:500;"></span>
+        <span id="git-ahead" style="color:var(--text-muted); font-size:13px;"></span>
+      </div>
       <span class="badge warn" id="git-dirty-badge" style="display:none;"></span>
     </div>
+
+    <div style="display:flex; gap:8px; margin-bottom: 12px;">
+      <select id="branch-picker" style="flex:1;"></select>
+      <button onclick="switchBranch()" style="flex:none; width:auto;">Switch</button>
+      <button onclick="newBranch()" style="flex:none; width:auto;">New branch</button>
+    </div>
+
     <div id="git-files"></div>
     <div class="divider" id="commit-box" style="display:none;">
+      <div id="diff-view" class="diff-view" style="display:none;"></div>
       <input type="text" id="commit-msg" placeholder="Describe what changed">
       <div class="btn-row">
-        <button onclick="reviewDiff()">Review diff</button>
+        <button onclick="toggleDiff()" id="diff-toggle-btn">Review diff</button>
         <button class="primary" onclick="doCommit()">Commit (local only, no push)</button>
+        <button onclick="doPush()">Push ↗</button>
       </div>
     </div>
   </div>
@@ -167,8 +181,63 @@ async function refreshGit() {
   }
 }
 
-function reviewDiff() {
-  alert('Would open `git diff` in your terminal/editor of choice -- not wired up in this MVP.');
+async function toggleDiff() {
+  const view = document.getElementById('diff-view');
+  const btn = document.getElementById('diff-toggle-btn');
+  if (view.style.display === 'block') {
+    view.style.display = 'none';
+    btn.textContent = 'Review diff';
+    return;
+  }
+  const res = await fetch('/api/git/diff');
+  const data = await res.json();
+  const html = data.diff.split('\n').map(line => {
+    let cls = '';
+    if (line.startsWith('+') && !line.startsWith('+++')) cls = 'diff-add';
+    else if (line.startsWith('-') && !line.startsWith('---')) cls = 'diff-del';
+    else if (line.startsWith('@@')) cls = 'diff-hunk';
+    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    return cls ? `<span class="${cls}">${escaped}</span>` : escaped;
+  }).join('\n');
+  view.innerHTML = html || 'No diff';
+  view.style.display = 'block';
+  btn.textContent = 'Hide diff';
+}
+
+async function refreshBranches() {
+  const res = await fetch('/api/git/branches');
+  const data = await res.json();
+  const picker = document.getElementById('branch-picker');
+  picker.innerHTML = data.branches.map(b =>
+    `<option value="${b}" ${b === data.current ? 'selected' : ''}>${b}</option>`
+  ).join('');
+}
+
+async function switchBranch() {
+  const branch = document.getElementById('branch-picker').value;
+  const res = await fetch('/api/git/checkout', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({branch}),
+  });
+  if (res.ok) { refreshGit(); refreshBranches(); refreshCommits(); }
+  else { const err = await res.json(); alert('Switch failed: ' + (err.error || 'unknown error')); }
+}
+
+async function newBranch() {
+  const branch = prompt('New branch name:');
+  if (!branch) return;
+  const res = await fetch('/api/git/checkout', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({branch, new: true}),
+  });
+  if (res.ok) { refreshGit(); refreshBranches(); refreshCommits(); }
+  else { const err = await res.json(); alert('Create branch failed: ' + (err.error || 'unknown error')); }
+}
+
+async function doPush() {
+  const res = await fetch('/api/git/push', {method: 'POST'});
+  if (res.ok) { alert('Pushed.'); refreshGit(); }
+  else { const err = await res.json(); alert('Push failed: ' + (err.error || 'unknown error')); }
 }
 
 async function doCommit() {
@@ -216,6 +285,7 @@ function refreshAll() {
 }
 
 refreshAll();
+refreshBranches();
 setInterval(refreshAll, 3000);
 </script>
 </body>
