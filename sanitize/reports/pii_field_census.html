@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+body { font-family: Georgia, 'Times New Roman', serif; margin: 36px; color: #1a1a1a; }
+h1 { font-size: 20px; border-bottom: 2px solid #2c3e50; padding-bottom: 6px; }
+p.meta { color: #555; font-size: 12px; margin-top: -4px;}
+table { border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 11px; }
+th { background: #2c3e50; color: white; text-align: left; padding: 6px 8px; }
+td { padding: 4px 8px; border-bottom: 1px solid #ddd; }
+td.model { font-weight: bold; }
+td.muted { color: transparent; }
+td.count { text-align: right; }
+.tag { color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; white-space: nowrap; }
+.legend { margin-top: 10px; font-size: 11px; }
+.legend-item { margin-right: 14px; }
+.dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+</style></head>
+<body>
+<h1>ERP16 sanitization scope review — individual/company PII field census</h1>
+<p class="meta">Source: real, untouched <code>orion_test</code> database on the redesign sandbox, 2026-08-02.
+Scope: compute=false, store=true fields on res.partner / hr.employee / hr.contract / res.users /
+res.partner.bank / resource.resource (the true underlying leaf behind hr.employee.name, which is
+itself a related field). "Populated" = non-null/non-empty/non-zero count of that field across all rows.
+Category column is a proposed classification for review, not a final decision.</p>
+<div class="legend"><span class='legend-item'><span class='dot' style='background:#c0392b'></span>Individual PII (27)</span><span class='legend-item'><span class='dot' style='background:#1f618d'></span>Company identity (4)</span><span class='legend-item'><span class='dot' style='background:#8e44ad'></span>Address / location (6)</span><span class='legend-item'><span class='dot' style='background:#b7950b'></span>Financial / compensation (quasi-PII) (11)</span><span class='legend-item'><span class='dot' style='background:#616a6b'></span>Free-text (may contain PII) (5)</span><span class='legend-item'><span class='dot' style='background:#7f8c8d'></span>Not PII (structural/technical) (26)</span></div>
+<table>
+<tr><th>Model</th><th>Field</th><th>Type</th><th>Populated</th><th>Proposed category</th></tr>
+<tr><td class='model'>hr.contract</td><td class='field'>hra</td><td class='type'>monetary</td><td class='count'>1</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>name</td><td class='type'>char</td><td class='count'>1</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>other_allowance</td><td class='type'>monetary</td><td class='count'>1</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>travel_allowance</td><td class='type'>monetary</td><td class='count'>1</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>wage</td><td class='type'>monetary</td><td class='count'>1</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>da</td><td class='type'>monetary</td><td class='count'>0</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>meal_allowance</td><td class='type'>monetary</td><td class='count'>0</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>medical_allowance</td><td class='type'>monetary</td><td class='count'>0</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>notes</td><td class='type'>html</td><td class='count'>0</td><td><span class='tag' style='background:#616a6b'>Free-text (may contain PII)</span></td></tr>
+<tr><td class='model'>hr.employee</td><td class='field'>emergency_phone</td><td class='type'>char</td><td class='count'>18</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>place_of_birth</td><td class='type'>char</td><td class='count'>14</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>emergency_contact</td><td class='type'>char</td><td class='count'>12</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>spouse_complete_name</td><td class='type'>char</td><td class='count'>8</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>children</td><td class='type'>integer</td><td class='count'>7</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>study_field</td><td class='type'>char</td><td class='count'>3</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>study_school</td><td class='type'>char</td><td class='count'>2</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>identification_id</td><td class='type'>char</td><td class='count'>1</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>km_home_work</td><td class='type'>integer</td><td class='count'>1</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>passport_id</td><td class='type'>char</td><td class='count'>1</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>additional_note</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#616a6b'>Free-text (may contain PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>barcode</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>color</td><td class='type'>integer</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>departure_description</td><td class='type'>html</td><td class='count'>0</td><td><span class='tag' style='background:#616a6b'>Free-text (may contain PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>hourly_cost</td><td class='type'>monetary</td><td class='count'>0</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>notes</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#616a6b'>Free-text (may contain PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>permit_no</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>pin</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>sinid</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>ssnid</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>vehicle</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>visa_no</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+<tr><td class='model'>res.partner</td><td class='field'>name</td><td class='type'>char</td><td class='count'>1,908</td><td><span class='tag' style='background:#c0392b'>Individual/contact PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>street</td><td class='type'>char</td><td class='count'>1,729</td><td><span class='tag' style='background:#8e44ad'>Address / location</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>vat</td><td class='type'>char</td><td class='count'>1,273</td><td><span class='tag' style='background:#1f618d'>Company identity</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>zip</td><td class='type'>char</td><td class='count'>1,015</td><td><span class='tag' style='background:#8e44ad'>Address / location</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>city</td><td class='type'>char</td><td class='count'>821</td><td><span class='tag' style='background:#8e44ad'>Address / location</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>mobile</td><td class='type'>char</td><td class='count'>730</td><td><span class='tag' style='background:#c0392b'>Individual/contact PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>street2</td><td class='type'>char</td><td class='count'>717</td><td><span class='tag' style='background:#8e44ad'>Address / location</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>email</td><td class='type'>char</td><td class='count'>710</td><td><span class='tag' style='background:#c0392b'>Individual/contact PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>customer_rank</td><td class='type'>integer</td><td class='count'>568</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>phone</td><td class='type'>char</td><td class='count'>511</td><td><span class='tag' style='background:#c0392b'>Individual/contact PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>function</td><td class='type'>char</td><td class='count'>149</td><td><span class='tag' style='background:#c0392b'>Individual/contact PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>website</td><td class='type'>char</td><td class='count'>141</td><td><span class='tag' style='background:#1f618d'>Company identity</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>supplier_rank</td><td class='type'>integer</td><td class='count'>39</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>partner_gid</td><td class='type'>integer</td><td class='count'>32</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>comment</td><td class='type'>html</td><td class='count'>18</td><td><span class='tag' style='background:#616a6b'>Free-text (may contain PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>signup_type</td><td class='type'>char</td><td class='count'>6</td><td><span class='tag' style='background:#c0392b'>Individual/contact PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>company_name</td><td class='type'>char</td><td class='count'>2</td><td><span class='tag' style='background:#1f618d'>Company identity</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>partner_latitude</td><td class='type'>float</td><td class='count'>1</td><td><span class='tag' style='background:#8e44ad'>Address / location</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>partner_longitude</td><td class='type'>float</td><td class='count'>1</td><td><span class='tag' style='background:#8e44ad'>Address / location</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>additional_info</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#c0392b'>Individual/contact PII</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>blocking_stage</td><td class='type'>float</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>color</td><td class='type'>integer</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>debit_limit</td><td class='type'>monetary</td><td class='count'>0</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>invoice_warn_msg</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>message_bounce</td><td class='type'>integer</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>picking_warn_msg</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>purchase_warn_msg</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>ref</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#1f618d'>Company identity</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>sale_warn_msg</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>seo_name</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>warning_stage</td><td class='type'>float</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>website_description</td><td class='type'>html</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>website_meta_description</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>website_meta_keywords</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>website_meta_og_img</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>website_meta_title</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>website_short_description</td><td class='type'>text</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model'>res.partner.bank</td><td class='field'>acc_number</td><td class='type'>char</td><td class='count'>3</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>sequence</td><td class='type'>integer</td><td class='count'>3</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>acc_holder_name</td><td class='type'>char</td><td class='count'>1</td><td><span class='tag' style='background:#b7950b'>Financial / compensation (quasi-PII)</span></td></tr>
+<tr><td class='model'>res.users</td><td class='field'>login</td><td class='type'>char</td><td class='count'>55</td><td><span class='tag' style='background:#c0392b'>Individual identity</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>karma</td><td class='type'>integer</td><td class='count'>2</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>oauth_access_token</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>oauth_uid</td><td class='type'>char</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>target_sales_done</td><td class='type'>integer</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>target_sales_invoiced</td><td class='type'>integer</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model muted'></td><td class='field'>target_sales_won</td><td class='type'>integer</td><td class='count'>0</td><td><span class='tag' style='background:#7f8c8d'>Not PII (structural/technical)</span></td></tr>
+<tr><td class='model'>resource.resource</td><td class='field'>name</td><td class='type'>char</td><td class='count'>57</td><td><span class='tag' style='background:#c0392b'>Individual PII</span></td></tr>
+
+</table>
+</body></html>
