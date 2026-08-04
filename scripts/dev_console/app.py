@@ -67,7 +67,10 @@ def docker_ps():
 
 
 def client_status(client_id, cfg, running_containers):
-    web_name = f"{client_id}-web_{client_id}-1"
+    # Laptop dev-start.sh uses the bare client_id as its container prefix
+    # (no "area" concept there), and the compose template's explicit
+    # container_name drops the old "-1" replica suffix entirely.
+    web_name = f"{client_id}-web"
     running = web_name in running_containers
     return {
         "client_id": client_id,

@@ -125,6 +125,11 @@ def render(template_name, context):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("client_id", help="Key under `clients:` in clients.yaml")
+    ap.add_argument("--container-prefix", required=True,
+                     help="Scopes every container/volume name for this stack, e.g. "
+                          "'live-18dec' (live-area), 'staging'/'sanitize' (shared "
+                          "single-slot areas, no client_id), or just the bare "
+                          "client_id for a developer laptop (no area concept there).")
     ap.add_argument("--addons-path", help="Host path to addons/all/latest, for module validation and the compose mount")
     ap.add_argument("--config-path", help="Host path to write/read odoo.conf from, for the compose mount")
     ap.add_argument("--out", default=None, help="Output dir (default: build/generated/<client_id>)")
@@ -149,6 +154,7 @@ def main():
 
     context = {
         "client_id": args.client_id,
+        "container_prefix": args.container_prefix,
         "db_name": cfg["db_name"],
         "odoo_version": cfg["odoo_version"],
         "postgres_version": cfg["postgres_version"],

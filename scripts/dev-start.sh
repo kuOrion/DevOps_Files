@@ -51,8 +51,11 @@ done
 OUT_DIR="$BUILD_DIR/generated/$CLIENT_ID"
 SNAPSHOT_DIR="$OUT_DIR/snapshot"
 COMPOSE_FILE="$OUT_DIR/docker-compose.yml"
-DB_SERVICE="db_${CLIENT_ID}"
-WEB_SERVICE="web_${CLIENT_ID}"
+# A laptop has no "area" concept (that's a sandbox/production thing -- see
+# the compose template) so the bare client_id is the container prefix.
+CONTAINER_PREFIX="$CLIENT_ID"
+DB_SERVICE="db"
+WEB_SERVICE="web"
 
 fail() { echo "ERROR: $1" >&2; exit 1; }
 
@@ -73,6 +76,7 @@ fi
 
 echo "=== Rendering docker-compose.yml/odoo.conf for '$CLIENT_ID' ==="
 python3 "$BUILD_DIR/scripts/render_client.py" "$CLIENT_ID" \
+    --container-prefix "$CONTAINER_PREFIX" \
     --addons-path "$ADDONS_PATH" \
     --aws-profile "$AWS_PROFILE" \
     --aws-region "$AWS_REGION"
@@ -140,7 +144,7 @@ if [ "$NEED_RESTORE" = true ] || [ "$DB_EXISTS" != "1" ]; then
     # up a *different* ephemeral container instance than the one cp'd
     # into, so the copied file was never actually there for it to read).
     docker compose -f "$COMPOSE_FILE" up --no-start "$WEB_SERVICE"
-    WEB_VOLUME="${CLIENT_ID}_odoo-web-data-${CLIENT_ID}"
+    WEB_VOLUME="${CONTAINER_PREFIX}_odoo-web-data"
     docker run --rm \
         -v "${WEB_VOLUME}:/var/lib/odoo" \
         -v "$SNAPSHOT_DIR:/snapshot:ro" \
