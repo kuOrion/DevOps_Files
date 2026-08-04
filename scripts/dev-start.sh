@@ -29,10 +29,12 @@ ADDONS_PATH="$(dirname "$BUILD_DIR")/erp16-custom-addons"
 # A developer laptop has a real named profile pointing at a static key.
 # Running this ON the sandbox itself has no static credentials by design --
 # it authenticates via its EC2 instance role instead, which needs an EMPTY
-# profile (render_client.py omits --profile entirely when this is unset,
-# falling back to the default credential chain). Override with
-# AWS_PROFILE= (empty) when running here, not on a laptop.
-AWS_PROFILE="${AWS_PROFILE-erp16-sandbox}"
+# profile (render_client.py's _aws_cmd omits --profile entirely when this
+# is empty, falling back to the default credential chain). Use
+# --aws-profile "" when running here, not an AWS_PROFILE env var -- the aws
+# CLI itself reads that env var directly regardless of any --profile flag,
+# so an empty exported value confuses it on its own.
+AWS_PROFILE="erp16-sandbox"
 AWS_REGION="ap-south-1"
 
 while [ $# -gt 0 ]; do
@@ -40,6 +42,7 @@ while [ $# -gt 0 ]; do
         --refresh) REFRESH=true ;;
         --down) DOWN=true ;;
         --addons-path) ADDONS_PATH="$2"; shift ;;
+        --aws-profile) AWS_PROFILE="$2"; shift ;;
         *) echo "ERROR: unknown argument '$1'" >&2; exit 1 ;;
     esac
     shift
