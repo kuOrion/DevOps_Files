@@ -1,0 +1,29 @@
+# Rendered per-client output (build artifact, regenerated from clients.yaml +
+# templates/ — never hand-maintained, differs per environment).
+generated/
+
+# Local stand-in for AWS SSM Parameter Store secrets, until secrets management lands.
+secrets.local.yaml
+
+# Sanitization validation test outputs — contain REAL unsanitized customer/
+# financial data. Never commit real client data to the repo.
+*.pdf
+
+# Raw/derived PII value dumps used to build the sanitization pipeline's
+# dictionary and mapping -- these CSVs contain REAL names/emails/phone
+# numbers/addresses in plaintext. Regeneratable via build_pii_dictionary.py ->
+# filter_pii_dictionary.py -> build_value_mapping.py. Never commit real
+# client data to the repo. (pii_field_census.html/.pdf are field-level
+# metadata only, no real values -- fine to keep tracked.)
+sanitize/reports/pii_value_dictionary_raw.csv
+sanitize/reports/pii_dictionary_full.csv
+sanitize/reports/pii_dictionary_substring_hunt.csv
+sanitize/reports/pii_value_mapping.csv
+
+# Python bytecode cache
+sanitize/__pycache__/
+scripts/dev_console/__pycache__/
+
+# OS/editor
+.DS_Store
+Thumbs.db
