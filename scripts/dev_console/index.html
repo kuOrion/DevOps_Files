@@ -5,110 +5,230 @@
 <title>ERP16 dev console</title>
 <style>
   :root {
-    --bg: #ffffff; --surface: #f7f7f5; --card: #ffffff;
-    --border: #e3e2de; --text: #1a1a18; --text-secondary: #6b6a65; --text-muted: #9b9a94;
+    --bg: #fbfbfa; --surface: #f2f1ee; --card: #ffffff;
+    --border: #e5e3de; --text: #1a1a18; --text-secondary: #52514c; --text-muted: #726f68;
     --success-bg: #eaf3de; --success-text: #27500a;
     --warning-bg: #faeeda; --warning-text: #854f0b;
-    --accent: #185fa5; --danger: #a32d2d;
+    --accent: #185fa5; --accent-bg: #185fa5; --accent-contrast: #ffffff;
+    --danger: #a32d2d; --danger-bg: #f6e6e6;
+    --shadow: 0 1px 2px rgba(20,20,15,0.05), 0 1px 8px rgba(20,20,15,0.03);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #1c1c1a; --surface: #262624; --card: #262624;
-      --border: #3a3a37; --text: #f0efec; --text-secondary: #b4b2a9; --text-muted: #888780;
+      --bg: #171715; --surface: #232320; --card: #211f1d;
+      --border: #37352f; --text: #f0efec; --text-secondary: #cbc9c0; --text-muted: #a3a099;
       --success-bg: #173404; --success-text: #c0dd97;
       --warning-bg: #412402; --warning-text: #fac775;
-      --accent: #85b7eb; --danger: #f09595;
+      --accent: #85b7eb; --accent-bg: #2f6fb0; --accent-contrast: #ffffff;
+      --danger: #f09595; --danger-bg: #3a2020;
+      --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 2px 12px rgba(0,0,0,0.18);
     }
   }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem; font-size: 14px; }
-  .wrap { max-width: 900px; margin: 0 auto; }
-  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
-  .header h1 { font-size: 16px; font-weight: 500; margin: 0; }
-  .docker-status { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .dot.up { background: #639922; } .dot.down { background: var(--danger); }
-  .section-label { font-size: 13px; color: var(--text-secondary); margin: 1.5rem 0 8px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; }
-  .card-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  .card-title { font-weight: 500; font-size: 15px; }
-  .badge { font-size: 12px; padding: 2px 8px; border-radius: 6px; }
+  body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; padding: 3rem 2.5rem 4rem;
+    font-size: 18px; line-height: 1.55;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--accent-bg);
+    color: var(--accent-contrast); font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; letter-spacing: -0.02em;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .header .sub { font-size: 14px; color: var(--text-muted); margin-top: 1px; }
+  .docker-status { font-size: 14.5px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.up { background: #5fa233; } .dot.down { background: var(--danger); }
+
+  .section-label {
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); margin: 2.25rem 0 10px;
+  }
+  .section-label:first-of-type { margin-top: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.4rem 1.6rem; box-shadow: var(--shadow);
+  }
+  .card-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
+  .card-title { font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
+  .badge { font-size: 13.5px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
   .badge.running { background: var(--success-bg); color: var(--success-text); }
   .badge.stopped { background: var(--surface); color: var(--text-muted); }
   .badge.warn { background: var(--warning-bg); color: var(--warning-text); }
-  .meta { font-size: 13px; color: var(--text-secondary); line-height: 1.9; }
-  .btn-row { display: flex; gap: 8px; margin-top: 12px; }
-  button { flex: 1; font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
-  button:hover { background: var(--surface); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button.primary { border-color: var(--accent); color: var(--accent); }
-  input[type=text] { width: 100%; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 10px; }
-  select { width: 100%; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-  .git-file { display: flex; justify-content: space-between; font-family: ui-monospace, monospace; font-size: 13px; padding: 3px 0; }
-  .code-added { color: #27500a; } .code-modified { color: #185fa5; } .code-deleted { color: var(--danger); }
-  .divider { border-top: 1px solid var(--border); margin: 12px 0; padding-top: 12px; }
-  .log { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-muted); max-height: 100px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px; }
-  .diff-view { font-family: ui-monospace, monospace; font-size: 12px; background: var(--surface); border-radius: 8px; padding: 0.75rem 1rem; max-height: 320px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 10px; }
-  .diff-add { color: #27500a; } .diff-del { color: var(--danger); } .diff-hunk { color: var(--accent); }
-  .commits { background: var(--surface); border-radius: 8px; padding: 0.75rem 1rem; font-size: 13px; color: var(--text-secondary); line-height: 2; }
-  .commit-hash { color: var(--text-muted); font-family: ui-monospace, monospace; }
-  a { color: var(--accent); }
+  .meta { font-size: 16px; color: var(--text-secondary); line-height: 1.9; }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 14px; }
+  button {
+    flex: 1; font: inherit; font-size: 15.5px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  }
+  button:hover:not(:disabled) { background: var(--surface); }
+  button:active:not(:disabled) { transform: translateY(0.5px); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.primary { background: var(--accent-bg); border-color: var(--accent-bg); color: var(--accent-contrast); }
+  button.primary:hover:not(:disabled) { opacity: 0.9; background: var(--accent-bg); }
+  button.success { background: #4c8c2b; border-color: #4c8c2b; color: #fff; flex: none; padding: 8px 20px; }
+  button.success:hover:not(:disabled) { opacity: 0.9; background: #4c8c2b; }
+  button.danger-outline { border-color: var(--danger); color: var(--danger); }
+  button.ghost { border-color: transparent; background: transparent; }
+  button.ghost:hover:not(:disabled) { background: var(--surface); }
+
+  input[type=text] {
+    width: 100%; font: inherit; font-size: 16px; padding: 12px 14px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 10px;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--accent); }
+  select {
+    width: 100%; font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+
+  .git-file { display: flex; justify-content: space-between; font-family: ui-monospace, monospace; font-size: 14.5px; padding: 5px 0; }
+  .code-added { color: #3a7a13; } .code-modified { color: var(--accent); } .code-deleted { color: var(--danger); }
+  .divider { border-top: 1px solid var(--border); margin: 14px 0 0; padding-top: 14px; }
+
+  .log {
+    font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--text-muted);
+    max-height: 100px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px;
+    background: var(--surface); border-radius: 6px; padding: 6px 8px;
+  }
+  .diff-view {
+    font-family: ui-monospace, monospace; font-size: 14px; background: var(--surface); border-radius: 8px;
+    padding: 0.75rem 1rem; max-height: 320px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 10px;
+  }
+  .diff-add { color: #3a7a13; } .diff-del { color: var(--danger); } .diff-hunk { color: var(--accent); }
+
+  .commit-hash { color: var(--text-muted); font-family: ui-monospace, monospace; font-size: 13.5px; }
+
+  .task-tree-row { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 640px) { .task-tree-row { grid-template-columns: 1fr; } }
+
+  .tree-card { padding-top: 1rem; padding-bottom: 0.6rem; max-height: 620px; overflow-y: auto; }
+  .tree-row { display: flex; gap: 10px; }
+  .tree-rail { position: relative; width: 20px; flex: none; display: flex; justify-content: center; }
+  .tree-rail::before {
+    content: ''; position: absolute; top: 4px; bottom: -14px; left: 50%; width: 1px;
+    background: var(--border); transform: translateX(-50%);
+  }
+  .tree-group .tree-row:last-child .tree-rail::before { bottom: 50%; }
+  .tree-branch-label {
+    display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700;
+    color: var(--text-secondary); margin: 4px 0 8px;
+  }
+  .tree-branch-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warning-text); flex: none; }
+  .tree-branch-empty { font-weight: 500; color: var(--text-muted); }
+  .tree-section-divider {
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); margin: 6px 0 10px; padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .tree-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted);
+    margin-top: 6px; flex: none; position: relative; z-index: 1;
+    border: 2px solid var(--card);
+  }
+  .tree-dot.merge { background: var(--accent-bg); width: 13px; height: 13px; margin-top: 5px; }
+  .tree-info { padding-bottom: 18px; min-width: 0; }
+  .tree-line1 { display: flex; align-items: center; gap: 8px; }
+  .avatar {
+    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff; flex: none;
+  }
+  .tree-subject { font-size: 15.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-meta { font-size: 14px; color: var(--text-secondary); margin-top: 3px; margin-left: 32px; }
+
+  .task-idle { text-align: center; padding: 1rem 0.5rem; }
+  .task-idle p { color: var(--text-secondary); font-size: 15.5px; margin: 0 0 14px; }
+  .task-active-label { font-size: 17px; font-weight: 700; }
+  .task-active-sub { font-size: 14.5px; color: var(--text-secondary); font-weight: 500; margin-top: 2px; }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .empty-note { color: var(--text-secondary); font-weight: 500; font-size: 15.5px; padding: 6px 0; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="header">
-    <h1>ERP16 dev console</h1>
-    <div style="display:flex; align-items:center; gap: 16px;">
-      <div class="docker-status" id="docker-status"><span class="dot" id="docker-dot"></span><span id="docker-text">checking docker...</span></div>
-      <button class="primary" onclick="openAddons()" style="flex: none;">Open custom addons</button>
+    <div class="brand">
+      <div class="brand-mark">16</div>
+      <div>
+        <h1>ERP16 dev console</h1>
+        <div class="sub">local development, wrapping dev-start.sh + git</div>
+      </div>
     </div>
+    <div class="docker-status" id="docker-status"><span class="dot" id="docker-dot"></span><span id="docker-text">checking docker...</span></div>
   </div>
 
-  <div class="section-label">Clients</div>
+  <div class="section-label">Clients / Containers</div>
   <div class="grid" id="clients-grid"></div>
 
-  <div class="section-label" id="git-label">Git</div>
-  <div class="card" id="git-card">
-    <div class="card-title-row">
-      <div style="font-size: 14px; display:flex; align-items:center; gap:10px;">
-        <span id="git-branch" style="font-weight:500;"></span>
-        <span id="git-ahead" style="color:var(--text-muted); font-size:13px;"></span>
+  <div class="section-label" id="git-label">Task</div>
+  <div class="task-tree-row">
+    <div>
+      <div class="card" id="git-card">
+        <div id="task-idle-view" class="task-idle" style="display:none;">
+          <p>No task in progress on <span id="repo-name-idle" style="font-weight:500;"></span>. Starting one pulls the latest code first.</p>
+          <input type="text" id="task-name" placeholder="What are you working on?">
+          <button class="primary" style="width:100%;" onclick="startTask()">Start New Task</button>
+        </div>
+
+        <div id="task-active-view" style="display:none;">
+          <div class="card-title-row">
+            <div>
+              <div class="task-active-label" id="task-name-label"></div>
+              <div class="task-active-sub" id="repo-name-active"></div>
+            </div>
+            <span class="badge warn" id="git-dirty-badge" style="display:none;"></span>
+          </div>
+
+          <div id="git-files"></div>
+          <div id="clean-note" class="empty-note" style="display:none;">Working tree clean -- saved and pushed.</div>
+
+          <div class="divider" id="commit-box" style="display:none;">
+            <div id="diff-view" class="diff-view" style="display:none;"></div>
+            <input type="text" id="commit-msg" placeholder="Describe what changed">
+            <div class="btn-row">
+              <button onclick="toggleDiff()" id="diff-toggle-btn">Review diff</button>
+              <button class="primary" onclick="doCommit()">Save Progress</button>
+            </div>
+          </div>
+
+          <div class="divider">
+            <button class="primary" style="width:100%;" onclick="finishTask()">Finish Task -- merge into main</button>
+          </div>
+        </div>
       </div>
-      <span class="badge warn" id="git-dirty-badge" style="display:none;"></span>
+      <div class="btn-row" style="margin-top: 14px;">
+        <button onclick="openAddons()">Open custom addons</button>
+        <button onclick="openClientsYaml()">Open clients.yaml</button>
+      </div>
     </div>
 
-    <div style="display:flex; gap:8px; margin-bottom: 12px;">
-      <select id="branch-picker" style="flex:1;"></select>
-      <button onclick="switchBranch()" style="flex:none; width:auto;">Switch</button>
-      <button onclick="newBranch()" style="flex:none; width:auto;">New branch</button>
-    </div>
-
-    <div id="git-files"></div>
-    <div class="divider" id="commit-box" style="display:none;">
-      <div id="diff-view" class="diff-view" style="display:none;"></div>
-      <input type="text" id="commit-msg" placeholder="Describe what changed">
-      <div class="btn-row">
-        <button onclick="toggleDiff()" id="diff-toggle-btn">Review diff</button>
-        <button class="primary" onclick="doCommit()">Commit (local only, no push)</button>
-      </div>
-    </div>
-    <div class="divider" id="push-box">
-      <div id="push-preview" style="font-size:13px; color:var(--text-secondary); margin-bottom:10px;"></div>
-      <button onclick="doPush()">Push ↗</button>
+    <div>
+      <div class="section-label" style="margin-top: 0;">Live Git Tree</div>
+      <div class="card tree-card" id="tree-card"></div>
     </div>
   </div>
-
-  <div class="section-label">Recent commits</div>
-  <div class="commits" id="commits-list"></div>
 </div>
 
 <script>
 const ADDONS_DIR = "__ADDONS_DIR__";
+let lastStatus = null;
 
 async function openAddons() {
   await fetch('/api/open-addons', {method: 'POST'});
+}
+
+async function openClientsYaml() {
+  await fetch('/api/open-clients-yaml', {method: 'POST'});
 }
 
 async function refreshClients() {
@@ -143,9 +263,9 @@ async function refreshClients() {
   let options = stoppedIds.map(id => `<option value="${id}">${id}</option>`).join('');
   const anyBusy = Object.values(data.jobs).some(j => j.state === 'running');
   grid.innerHTML += `
-    <div class="card" style="border-style:dashed; display:flex; flex-direction:column; justify-content:center; gap:10px;">
+    <div class="card" style="border-style:dashed; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; box-shadow:none;">
       <select id="client-picker">${options}</select>
-      <button class="primary" onclick="startClient()" ${anyBusy || !stoppedIds.length ? 'disabled' : ''}>Start client</button>
+      <button class="success" onclick="startClient()" ${anyBusy || !stoppedIds.length ? 'disabled' : ''}>Start client</button>
     </div>`;
 }
 
@@ -164,17 +284,33 @@ async function stopClient(id) {
 async function refreshGit() {
   const res = await fetch('/api/git/status');
   const data = await res.json();
-  document.getElementById('git-label').textContent = `Git — ${data.repo}`;
-  document.getElementById('git-branch').textContent = data.branch;
-  document.getElementById('git-ahead').textContent = data.ahead ? `${data.ahead} commits ahead of main` : '';
-  document.getElementById('push-preview').textContent = data.push_preview;
+  lastStatus = data;
+  document.getElementById('git-label').textContent = 'Task';
+
+  const idleView = document.getElementById('task-idle-view');
+  const activeView = document.getElementById('task-active-view');
+
+  if (!data.on_task) {
+    idleView.style.display = 'block';
+    activeView.style.display = 'none';
+    document.getElementById('repo-name-idle').textContent = data.repo;
+    return;
+  }
+
+  idleView.style.display = 'none';
+  activeView.style.display = 'block';
+  document.getElementById('repo-name-active').textContent = data.repo;
+  document.getElementById('task-name-label').textContent = data.branch.replace(/^task\//, '').replace(/-/g, ' ');
+
   const dirtyBadge = document.getElementById('git-dirty-badge');
   const commitBox = document.getElementById('commit-box');
+  const cleanNote = document.getElementById('clean-note');
   const filesDiv = document.getElementById('git-files');
   if (data.files.length) {
     dirtyBadge.style.display = 'inline-block';
-    dirtyBadge.textContent = `${data.files.length} uncommitted`;
+    dirtyBadge.textContent = `${data.files.length} unsaved`;
     commitBox.style.display = 'block';
+    cleanNote.style.display = 'none';
     filesDiv.innerHTML = data.files.map(f => {
       const cls = f.code.includes('A') ? 'code-added' : f.code.includes('D') ? 'code-deleted' : 'code-modified';
       return `<div class="git-file"><span><span class="${cls}">${f.code}</span>&nbsp;&nbsp;${f.path}</span><span style="color:var(--text-muted)">+${f.added} -${f.removed}</span></div>`;
@@ -182,7 +318,8 @@ async function refreshGit() {
   } else {
     dirtyBadge.style.display = 'none';
     commitBox.style.display = 'none';
-    filesDiv.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Working tree clean</div>';
+    filesDiv.innerHTML = '';
+    cleanNote.style.display = 'block';
   }
 }
 
@@ -209,40 +346,27 @@ async function toggleDiff() {
   btn.textContent = 'Hide diff';
 }
 
-async function refreshBranches() {
-  const res = await fetch('/api/git/branches');
-  const data = await res.json();
-  const picker = document.getElementById('branch-picker');
-  picker.innerHTML = data.branches.map(b =>
-    `<option value="${b}" ${b === data.current ? 'selected' : ''}>${b}</option>`
-  ).join('');
-}
-
-async function switchBranch() {
-  const branch = document.getElementById('branch-picker').value;
-  const res = await fetch('/api/git/checkout', {
+async function startTask() {
+  const name = document.getElementById('task-name').value.trim();
+  if (!name) return;
+  const res = await fetch('/api/task/start', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({branch}),
+    body: JSON.stringify({name}),
   });
-  if (res.ok) { refreshGit(); refreshBranches(); refreshCommits(); }
-  else { const err = await res.json(); alert('Switch failed: ' + (err.error || 'unknown error')); }
+  if (res.ok) { document.getElementById('task-name').value = ''; refreshGit(); refreshTree(); }
+  else { const err = await res.json(); alert('Could not start task: ' + (err.error || 'unknown error')); }
 }
 
-async function newBranch() {
-  const branch = prompt('New branch name:');
-  if (!branch) return;
-  const res = await fetch('/api/git/checkout', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({branch, new: true}),
-  });
-  if (res.ok) { refreshGit(); refreshBranches(); refreshCommits(); }
-  else { const err = await res.json(); alert('Create branch failed: ' + (err.error || 'unknown error')); }
-}
-
-async function doPush() {
-  const res = await fetch('/api/git/push', {method: 'POST'});
-  if (res.ok) { alert('Pushed.'); refreshGit(); }
-  else { const err = await res.json(); alert('Push failed: ' + (err.error || 'unknown error')); }
+async function finishTask() {
+  if (lastStatus && lastStatus.files && lastStatus.files.length) {
+    const msg = document.getElementById('commit-msg').value.trim();
+    if (!msg) { alert('Describe your remaining changes in the box above before finishing.'); return; }
+    await doCommit();
+  }
+  if (!confirm('Merge this task into main and push? This finishes the task.')) return;
+  const res = await fetch('/api/task/end', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
+  if (res.ok) { refreshGit(); refreshTree(); }
+  else { const err = await res.json(); alert(err.error || 'Could not finish task.'); }
 }
 
 async function doCommit() {
@@ -255,20 +379,53 @@ async function doCommit() {
   if (res.ok) {
     document.getElementById('commit-msg').value = '';
     refreshGit();
-    refreshCommits();
+    refreshTree();
   } else {
     const err = await res.json();
-    alert('Commit failed: ' + (err.error || 'unknown error'));
+    alert('Save failed: ' + (err.error || 'unknown error'));
   }
 }
 
-async function refreshCommits() {
-  const res = await fetch('/api/git/log');
+function avatarColor(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return `hsl(${hash % 360}, 50%, 42%)`;
+}
+function initials(name) {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
+}
+
+function renderCommitRows(commits) {
+  if (!commits.length) return '';
+  return '<div class="tree-group">' + commits.map(c => `
+    <div class="tree-row">
+      <div class="tree-rail"><span class="tree-dot ${c.is_merge ? 'merge' : ''}"></span></div>
+      <div class="tree-info">
+        <div class="tree-line1">
+          <span class="avatar" style="background:${avatarColor(c.author)}">${initials(c.author)}</span>
+          <span class="tree-subject">${c.subject}</span>
+        </div>
+        <div class="tree-meta">${c.author} &middot; ${c.when} &middot; <span class="commit-hash">${c.hash}</span></div>
+      </div>
+    </div>`).join('') + '</div>';
+}
+
+async function refreshTree() {
+  const res = await fetch('/api/git/tree');
   const data = await res.json();
-  const el = document.getElementById('commits-list');
-  el.innerHTML = data.commits.map(c =>
-    `<div><span class="commit-hash">${c.hash}</span>&nbsp;&nbsp;${c.subject}&nbsp;&nbsp;<span style="color:var(--text-muted)">${c.when}</span></div>`
-  ).join('') || '<div style="color:var(--text-muted)">No commits yet</div>';
+  const el = document.getElementById('tree-card');
+
+  let html = '';
+  for (const task of data.active_tasks) {
+    const label = task.branch.replace(/^task\//, '').replace(/-/g, ' ');
+    html += `<div class="tree-branch-label"><span class="tree-branch-dot"></span>${label}${task.commits.length ? '' : ' <span class="tree-branch-empty">(just started, no commits yet)</span>'}</div>`;
+    html += renderCommitRows(task.commits);
+  }
+  if (data.active_tasks.length) html += '<div class="tree-section-divider">main</div>';
+  html += data.main.length ? renderCommitRows(data.main) : '<div class="empty-note">No commits yet</div>';
+
+  el.innerHTML = html;
 }
 
 async function refreshDockerStatus() {
@@ -286,11 +443,10 @@ function refreshAll() {
   refreshDockerStatus();
   refreshClients();
   refreshGit();
-  refreshCommits();
+  refreshTree();
 }
 
 refreshAll();
-refreshBranches();
 setInterval(refreshAll, 3000);
 </script>
 </body>

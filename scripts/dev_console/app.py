@@ -18,6 +18,7 @@ the developer, every time, no exceptions.
 import json
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -120,14 +121,21 @@ def _git(args, cwd=ADDONS_DIR):
 
 
 def _auto_commit_if_dirty(reason):
-    """Local commit only, never push -- see module docstring."""
+    """Always commits locally. Also pushes, but ONLY if on a task branch --
+    a task branch is isolated (no one else is on it), so pushing WIP there
+    is safe. Never auto-pushes to main."""
     status = _git(["status", "--porcelain"])
     if not status.stdout.strip():
         return None
     _git(["add", "-A"])
     msg = f"WIP: auto-commit ({reason})"
     commit = _git(["commit", "-m", msg])
-    return msg if commit.returncode == 0 else None
+    if commit.returncode != 0:
+        return None
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    if branch != "main":
+        _git(["push", "-u", "origin", branch])
+    return msg
 
 
 @app.route("/api/stop/<client_id>", methods=["POST"])
@@ -148,10 +156,6 @@ def api_job(client_id):
 @app.route("/api/git/status")
 def api_git_status():
     branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
-    ahead_behind = _git(["rev-list", "--left-right", "--count", "origin/main...HEAD"])
-    ahead = 0
-    if ahead_behind.returncode == 0 and "\t" in ahead_behind.stdout:
-        ahead = int(ahead_behind.stdout.strip().split("\t")[1])
     status = _git(["status", "--porcelain"])
     files = []
     # splitlines() on the raw stdout, NOT stdout.strip() first -- porcelain
@@ -171,31 +175,53 @@ def api_git_status():
             if len(parts) >= 2:
                 added, removed = parts[0], parts[1]
         files.append({"code": code or "?", "path": path, "added": added, "removed": removed})
-    upstream_check = _git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
-    if upstream_check.returncode == 0:
-        unpushed = _git(["rev-list", "--count", "@{u}..HEAD"])
-        push_preview = f"{unpushed.stdout.strip()} commit(s) not yet on {upstream_check.stdout.strip()}"
-    else:
-        push_preview = f"Never pushed -- will create origin/{branch}"
 
     return jsonify({
         "repo": os.path.basename(ADDONS_DIR),
         "branch": branch,
-        "ahead": ahead,
+        "on_task": branch not in ("main", "HEAD"),
         "files": files,
-        "push_preview": push_preview,
     })
 
 
-@app.route("/api/git/log")
-def api_git_log():
-    log = _git(["log", "-4", "--pretty=format:%h|%ar|%s"])
+def _parse_log(stdout):
     commits = []
-    for line in log.stdout.strip().splitlines():
-        if "|" in line:
-            h, when, subject = line.split("|", 2)
-            commits.append({"hash": h, "when": when, "subject": subject})
-    return jsonify({"commits": commits})
+    for line in stdout.strip().splitlines():
+        if "|" not in line:
+            continue
+        h, parents, author, when, subject = line.split("|", 4)
+        commits.append({
+            "hash": h,
+            "author": author,
+            "when": when,
+            "subject": subject,
+            "is_merge": len(parents.split()) > 1,
+        })
+    return commits
+
+
+@app.route("/api/git/tree")
+def api_git_tree():
+    """Main's last 8 commits, plus every currently active task branch
+    (local ones you started, and remote ones a teammate pushed via their
+    own Save Progress) with the commits on each not yet on main -- a
+    fetch first so a teammate's in-progress branch actually shows up."""
+    _git(["fetch", "--prune", "-q", "origin"])
+
+    main_log = _git(["log", "-30", "--pretty=format:%h|%p|%an|%ar|%s", "main"])
+    main_commits = _parse_log(main_log.stdout)
+
+    local = set(_git(["for-each-ref", "--format=%(refname:short)", "refs/heads/task/"]).stdout.split())
+    remote = set(_git(["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/task/"]).stdout.split())
+    names = sorted(local | {r.split("/", 1)[1] for r in remote if r.startswith("origin/")})
+
+    active_tasks = []
+    for name in names:
+        ref = name if name in local else f"origin/{name}"
+        log = _git(["log", ref, "--not", "main", "--pretty=format:%h|%p|%an|%ar|%s", "-8"])
+        active_tasks.append({"branch": name, "commits": _parse_log(log.stdout)})
+
+    return jsonify({"main": main_commits, "active_tasks": active_tasks})
 
 
 @app.route("/api/git/commit", methods=["POST"])
@@ -207,7 +233,15 @@ def api_git_commit():
     result = _git(["commit", "-m", message])
     if result.returncode != 0:
         return jsonify({"error": result.stdout + result.stderr}), 400
-    return jsonify({"ok": True})
+    # Safe to auto-push here: a task branch is isolated, so a WIP push
+    # can't collide with anyone else's work the way pushing WIP to main
+    # could. Never pushes if somehow still on main.
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    pushed = False
+    if branch != "main":
+        push = _git(["push", "-u", "origin", branch])
+        pushed = push.returncode == 0
+    return jsonify({"ok": True, "pushed": pushed})
 
 
 @app.route("/api/git/diff")
@@ -216,41 +250,75 @@ def api_git_diff():
     return jsonify({"diff": diff.stdout})
 
 
-@app.route("/api/git/branches")
-def api_git_branches():
+@app.route("/api/task/start", methods=["POST"])
+def api_task_start():
+    """Pulls latest main, creates+switches to a task/<slug> branch. The
+    word 'branch' never needs to reach the UI -- this is just 'start
+    working on something new'."""
+    name = (request.json or {}).get("name", "").strip()
+    if not name:
+        return jsonify({"error": "describe the task first"}), 400
     current = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
-    result = _git(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])
-    branches = [b for b in result.stdout.strip().splitlines() if b]
-    return jsonify({"current": current, "branches": branches})
-
-
-@app.route("/api/git/checkout", methods=["POST"])
-def api_git_checkout():
-    branch = request.json.get("branch", "").strip()
-    is_new = request.json.get("new", False)
-    if not branch:
-        return jsonify({"error": "branch name required"}), 400
-    committed = _auto_commit_if_dirty(f"branch switch to {branch}")
-    args = ["checkout", "-b", branch] if is_new else ["checkout", branch]
-    result = _git(args)
-    if result.returncode != 0:
-        return jsonify({"error": result.stdout + result.stderr, "committed": committed}), 400
-    return jsonify({"ok": True, "committed": committed})
-
-
-@app.route("/api/git/push", methods=["POST"])
-def api_git_push():
-    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
-    result = _git(["push", "-u", "origin", branch])
+    if current != "main":
+        return jsonify({"error": f"finish the current task ({current}) before starting a new one"}), 400
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "task"
+    branch = f"task/{slug}"
+    pull = _git(["pull", "origin", "main"])
+    if pull.returncode != 0:
+        return jsonify({"error": "pull failed: " + pull.stdout + pull.stderr}), 400
+    result = _git(["checkout", "-b", branch])
     if result.returncode != 0:
         return jsonify({"error": result.stdout + result.stderr}), 400
-    return jsonify({"ok": True, "output": result.stdout + result.stderr})
+    return jsonify({"ok": True, "branch": branch})
+
+
+@app.route("/api/task/end", methods=["POST"])
+def api_task_end():
+    """Commits anything left, pushes, merges into main, pushes main,
+    deletes the task branch. On a merge conflict, backs out to main
+    untouched and leaves the task branch alone for manual resolution --
+    no in-browser conflict UI, just a clear stop."""
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    if branch == "main":
+        return jsonify({"error": "not currently on a task"}), 400
+    message = (request.json or {}).get("message", "").strip()
+    status = _git(["status", "--porcelain"])
+    if status.stdout.strip():
+        if not message:
+            return jsonify({"error": "describe the remaining changes before finishing"}), 400
+        _git(["add", "-A"])
+        commit = _git(["commit", "-m", message])
+        if commit.returncode != 0:
+            return jsonify({"error": commit.stdout + commit.stderr}), 400
+    push = _git(["push", "-u", "origin", branch])
+    if push.returncode != 0:
+        return jsonify({"error": "push failed: " + push.stdout + push.stderr}), 400
+    _git(["checkout", "main"])
+    _git(["pull", "origin", "main"])
+    merge = _git(["merge", "--no-ff", branch, "-m", f"Merge {branch}"])
+    if merge.returncode != 0:
+        return jsonify({
+            "error": "Merge conflict -- back on main, task branch untouched. Ask for help resolving this one in a terminal.",
+            "branch": branch,
+        }), 409
+    push_main = _git(["push", "origin", "main"])
+    if push_main.returncode != 0:
+        return jsonify({"error": push_main.stdout + push_main.stderr}), 400
+    _git(["branch", "-d", branch])
+    _git(["push", "origin", "--delete", branch])
+    return jsonify({"ok": True, "merged_branch": branch})
 
 
 @app.route("/api/open-addons", methods=["POST"])
 def api_open_addons():
     subprocess.Popen(["xdg-open", ADDONS_DIR])
     return jsonify({"ok": True, "path": ADDONS_DIR})
+
+
+@app.route("/api/open-clients-yaml", methods=["POST"])
+def api_open_clients_yaml():
+    subprocess.Popen(["xdg-open", CLIENTS_YAML])
+    return jsonify({"ok": True, "path": CLIENTS_YAML})
 
 
 @app.route("/")
