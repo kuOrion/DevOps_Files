@@ -1,4 +1,4 @@
-# erp16-tooling
+# erp16-operations
 
 The operational tooling for ERP16 (Orion Instruments Odoo infrastructure) —
 `clients.yaml`, config templates, developer/admin scripts, the dev console,
