@@ -26,7 +26,13 @@ shift || true
 REFRESH=false
 DOWN=false
 ADDONS_PATH="$(dirname "$BUILD_DIR")/erp16-custom-addons"
-AWS_PROFILE="erp16-sandbox"
+# A developer laptop has a real named profile pointing at a static key.
+# Running this ON the sandbox itself has no static credentials by design --
+# it authenticates via its EC2 instance role instead, which needs an EMPTY
+# profile (render_client.py omits --profile entirely when this is unset,
+# falling back to the default credential chain). Override with
+# AWS_PROFILE= (empty) when running here, not on a laptop.
+AWS_PROFILE="${AWS_PROFILE-erp16-sandbox}"
 AWS_REGION="ap-south-1"
 
 while [ $# -gt 0 ]; do
