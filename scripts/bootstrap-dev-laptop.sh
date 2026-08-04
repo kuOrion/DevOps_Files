@@ -86,16 +86,16 @@ else
 fi
 
 say "Repositories"
-if [ -d "$REPO_DIR/ERP16/.git" ]; then
-    ok "ERP16 already cloned at $REPO_DIR/ERP16"
+if [ -d "$REPO_DIR/erp16-tooling/.git" ]; then
+    ok "erp16-tooling already cloned at $REPO_DIR/erp16-tooling"
 else
-    doing "cloning ERP16 into $REPO_DIR/ERP16"
-    git clone https://github.com/cj78/ERP16.git "$REPO_DIR/ERP16"
+    doing "cloning erp16-tooling into $REPO_DIR/erp16-tooling"
+    git clone https://github.com/cj78/erp16-tooling.git "$REPO_DIR/erp16-tooling"
 fi
 if [ -d "$REPO_DIR/erp16-custom-addons/.git" ]; then
     ok "erp16-custom-addons already cloned at $REPO_DIR/erp16-custom-addons"
 else
-    doing "cloning erp16-custom-addons into $REPO_DIR/erp16-custom-addons (sibling to ERP16, matching what dev-start.sh expects)"
+    doing "cloning erp16-custom-addons into $REPO_DIR/erp16-custom-addons (sibling to erp16-tooling, matching what dev-start.sh expects)"
     git clone https://github.com/cj78/erp16-custom-addons.git "$REPO_DIR/erp16-custom-addons"
 fi
 
@@ -113,5 +113,5 @@ else
 fi
 
 say "Done"
-echo "  Next: cd $REPO_DIR/ERP16 && build/scripts/dev-start.sh orion_test"
-echo "  Or launch the dev console: python3 build/scripts/dev_console/app.py"
+echo "  Next: cd $REPO_DIR/erp16-tooling && scripts/dev-start.sh orion_test"
+echo "  Or launch the dev console: python3 scripts/dev_console/app.py"

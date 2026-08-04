@@ -28,13 +28,12 @@ from flask import Flask, jsonify, request, Response
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 BUILD_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REPO_DIR = os.path.dirname(BUILD_DIR)
 # Override for testing/demo -- e.g. pointing at a throwaway repo instead
 # of the real erp16-custom-addons checkout, so push can be exercised
 # safely. Normal operation never sets this.
 ADDONS_DIR = os.environ.get(
     "DEV_CONSOLE_ADDONS_DIR",
-    os.path.join(os.path.dirname(REPO_DIR), "erp16-custom-addons"),
+    os.path.join(os.path.dirname(BUILD_DIR), "erp16-custom-addons"),
 )
 CLIENTS_YAML = os.path.join(BUILD_DIR, "clients.yaml")
 DEV_START = os.path.join(BUILD_DIR, "scripts", "dev-start.sh")

@@ -20,13 +20,12 @@
 set -euo pipefail
 
 BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO_DIR="$(dirname "$BUILD_DIR")"
 CLIENT_ID="${1:?Usage: dev-start.sh <client_id> [--refresh] [--down]}"
 shift || true
 
 REFRESH=false
 DOWN=false
-ADDONS_PATH="$(dirname "$REPO_DIR")/erp16-custom-addons"
+ADDONS_PATH="$(dirname "$BUILD_DIR")/erp16-custom-addons"
 AWS_PROFILE="erp16-sandbox"
 AWS_REGION="ap-south-1"
 
