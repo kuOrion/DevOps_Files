@@ -127,7 +127,7 @@ def main():
     ap.add_argument("client_id", help="Key under `clients:` in clients.yaml")
     ap.add_argument("--container-prefix", required=True,
                      help="Scopes every container/volume name for this stack, e.g. "
-                          "'live-18dec' (live-area), 'staging'/'sanitize' (shared "
+                          "'live-orion-internal' (live-area), 'staging'/'sanitize' (shared "
                           "single-slot areas, no client_id), or just the bare "
                           "client_id for a developer laptop (no area concept there).")
     ap.add_argument("--addons-path", help="Host path to addons/all/latest, for module validation and the compose mount")

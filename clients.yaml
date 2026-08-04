@@ -9,8 +9,8 @@
 # secrets_ref fall back to build/secrets.local.yaml (gitignored, local-only).
 
 clients:
-  18dec:
-    display_name: "Orion Internal Test (18 Dec)"
+  orion-internal:
+    display_name: "Orion Internal"
     db_name: db_orion_test_18_dec
     odoo_version: "16.0"
     postgres_version: "14.15"
@@ -25,7 +25,7 @@ clients:
     http_port: 8069           # host-side bind (127.0.0.1 only) — must be unique per client on one host
     longpolling_port: 8072
     domain: null              # HAProxy routing target once per-client routing exists; null = not yet exposed
-    secrets_ref: /erp16-sandbox/18dec   # sandbox SSM path prefix (see build/README.md); repointed at the
+    secrets_ref: /erp16-sandbox/orion-internal   # sandbox SSM path prefix (see build/README.md); repointed at the
                                         # client's real AWS account once milestone 2 is production-ready
     modules:                  # verified 2026-07-31 via ir_module_module state='installed'
                                # intersected against addons/all/latest/ — validated at
@@ -108,7 +108,7 @@ clients:
       monthly_snapshot_retention_months: 12
 
   orion_test:
-    display_name: "Orion Test (internal duplicate of 18dec)"
+    display_name: "Orion Test (internal duplicate of orion-internal)"
     db_name: orion_test
     odoo_version: "16.0"
     postgres_version: "14.15"
@@ -117,18 +117,18 @@ clients:
     list_db: true             # single-client sandbox for now; flip false once milestone 6 lands
     proxy_mode: false         # true once behind HAProxy (not applicable — tunnel-only, see below)
     workers: 2
-    cron_enabled: false       # sandbox-safety default - see 18dec's note above
-    http_port: 8089           # distinct from 18dec's 8069/parus's 8079 -- multi-client-at-once
+    cron_enabled: false       # sandbox-safety default - see orion-internal's note above
+    http_port: 8089           # distinct from orion-internal's 8069/parus's 8079 -- multi-client-at-once
                                # (dev-start.sh, demo) needs every client on a unique port, not just
                                # "whichever one isn't currently running"
     longpolling_port: 8092
     domain: null              # PERMANENTLY excluded from milestone 5 public routing — this is Orion's
-                               # own internal duplicate of 18dec, not a separate external client (see
+                               # own internal duplicate of orion-internal, not a separate external client (see
                                # ROADMAP.md's milestone 5 note); stays tunnel-only via browse_sandbox
     secrets_ref: /erp16-sandbox/orion_test   # sandbox SSM path prefix (see build/README.md); repointed at
                                               # the client's real AWS account once milestone 2 is production-ready
     modules:                  # verified 2026-08-01 via ir_module_module state='installed'
-                               # intersected against addons/all/latest/ — identical to 18dec's list,
+                               # intersected against addons/all/latest/ — identical to orion-internal's list,
                                # confirming this really is a byte-for-byte duplicate
       - base_account_budget
       - base_accounting_kit
@@ -217,8 +217,8 @@ clients:
     list_db: true             # flip to false once per-client HAProxy routing exists (milestone 6, planned for this client)
     proxy_mode: false         # true once behind HAProxy (milestone 5, planned for this client)
     workers: 2
-    cron_enabled: false       # sandbox-safety default - see 18dec's note above
-    http_port: 8079           # unique per client on one host - 18dec already uses 8069
+    cron_enabled: false       # sandbox-safety default - see orion-internal's note above
+    http_port: 8079           # unique per client on one host - orion-internal already uses 8069
     longpolling_port: 8082
     domain: null              # target once milestone 5 lands here: parusinstruments.erp16.orion-instruments.io
     secrets_ref: /erp16-sandbox/parus_instruments   # sandbox SSM path prefix (see build/README.md); repointed at
