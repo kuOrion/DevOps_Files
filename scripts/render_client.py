@@ -149,7 +149,11 @@ def main():
         args.client_id, cfg.get("secrets_ref"), args.aws_profile, args.aws_region
     )
 
-    out_dir = args.out or os.path.join(BUILD_DIR, "generated", args.client_id)
+    # Always absolute -- a relative --out gets embedded as-is into the
+    # rendered compose file's volume paths, which Docker Compose then
+    # resolves relative to the COMPOSE FILE's own directory, not the
+    # caller's cwd, silently doubling the path (found live, not guessed).
+    out_dir = os.path.abspath(args.out or os.path.join(BUILD_DIR, "generated", args.client_id))
     os.makedirs(out_dir, exist_ok=True)
 
     context = {
@@ -165,8 +169,8 @@ def main():
         "http_port": cfg["http_port"],
         "longpolling_port": cfg["longpolling_port"],
         "docker_dir": DOCKER_DIR,
-        "addons_host_path": args.addons_path or "/CHANGE_ME/addons",
-        "config_host_path": args.config_path or os.path.join(out_dir, "config"),
+        "addons_host_path": os.path.abspath(args.addons_path) if args.addons_path else "/CHANGE_ME/addons",
+        "config_host_path": os.path.abspath(args.config_path) if args.config_path else os.path.join(out_dir, "config"),
         "db_password": db_password,
         "master_password": master_password,
     }
@@ -177,7 +181,7 @@ def main():
     with open(os.path.join(out_dir, "docker-compose.yml"), "w") as f:
         f.write(compose_out)
 
-    conf_dir = args.config_path or os.path.join(out_dir, "config")
+    conf_dir = context["config_host_path"]
     os.makedirs(conf_dir, exist_ok=True)
     with open(os.path.join(conf_dir, "odoo.conf"), "w") as f:
         f.write(conf_out)
