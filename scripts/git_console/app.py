@@ -53,10 +53,19 @@ _jobs = {}
 _jobs_lock = threading.Lock()
 
 
+# sanitize/staging are working-area pseudo-clients (the sanitization
+# pipeline's scratch container, admin's multi-DB review container) --
+# never something a dev should be starting locally. clients.yaml has no
+# field distinguishing them from real clients (same as deploy.sh's
+# list_cloud_clients() hits), so exclude by name, same convention.
+_NON_DEV_CLIENTS = {"sanitize", "staging"}
+
+
 def load_clients():
     import yaml
     with open(CLIENTS_YAML) as f:
-        return yaml.safe_load(f)["clients"]
+        clients = yaml.safe_load(f)["clients"]
+    return {cid: cfg for cid, cfg in clients.items() if cid not in _NON_DEV_CLIENTS}
 
 
 def docker_ps():

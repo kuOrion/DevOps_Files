@@ -48,7 +48,7 @@
 
   .section-label {
     font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--text-muted); margin: 2.25rem 0 10px;
+    color: var(--accent); margin: 2.25rem 0 10px;
   }
   .section-label:first-of-type { margin-top: 0; }
 
@@ -68,15 +68,13 @@
   .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   button {
     flex: 1; font: inherit; font-size: 15.5px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer;
+    border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer;
     transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
     min-width: 140px;
   }
   button:hover:not(:disabled) { background: var(--surface); }
   button:active:not(:disabled) { transform: translateY(0.5px); }
   button:disabled { opacity: 0.45; cursor: default; }
-  button.primary { background: var(--accent-bg); border-color: var(--accent-bg); color: var(--accent-contrast); }
-  button.primary:hover:not(:disabled) { opacity: 0.9; background: var(--accent-bg); }
   button.success { background: #4c8c2b; border-color: #4c8c2b; color: #fff; }
   button.success:hover:not(:disabled) { opacity: 0.9; background: #4c8c2b; }
 
@@ -179,11 +177,7 @@
       <select id="client-picker"></select>
       <div class="btn-row">
         <button onclick="getLatest()" id="get-latest-btn">Get Latest</button>
-        <button class="success" onclick="startClient()" id="start-container-btn">Start Container</button>
-      </div>
-      <div class="meta" style="font-size:13.5px; margin-top:8px;">
-        <b>Get Latest</b>: fresh code + fresh data for the picked client.<br>
-        <b>Start Container</b>: bring it up with whatever's already cached -- do this once, then keep editing; saved changes just work.
+        <button onclick="startClient()" id="start-container-btn">Start Container</button>
       </div>
     </div>
   </div>
@@ -207,7 +201,7 @@
           <div class="btn-row">
             <button onclick="toggleDiff()" id="diff-toggle-btn">Review changes</button>
             <button onclick="saveChanges()">Save Changes</button>
-            <button class="primary" onclick="sendForReview()" id="send-btn">Send for Review</button>
+            <button class="success" onclick="sendForReview()" id="send-btn">Send for Review</button>
           </div>
         </div>
       </div>
