@@ -143,6 +143,12 @@ def main():
                           "isolated from the sandbox's own stack, so its password never needs "
                           "to match the SSM-stored one -- confirmed live 2026-08-05, dev-start.sh "
                           "failed outright under a real scoped dev profile without this flag.")
+    ap.add_argument("--dev-mode", action="store_true",
+                     help="Set Odoo's dev_mode (reload,qweb,xml) so a saved addons edit gets "
+                          "picked up automatically (Python auto-restarts, XML/qweb reload "
+                          "without a manual module upgrade) -- only ever passed by dev-start.sh, "
+                          "since this trades away caching/perf for iteration speed, which is "
+                          "wrong for anything live/staging/sanitize-like.")
     args = ap.parse_args()
 
     clients = load_yaml(CLIENTS_YAML).get("clients", {})
@@ -177,6 +183,7 @@ def main():
         # that needs this empty (unfiltered), since it hosts every live
         # client's database at once for admin review.
         "dbfilter": cfg.get("dbfilter", f"^{cfg['db_name']}$"),
+        "dev_mode": "reload,qweb,xml" if args.dev_mode else "",
         "proxy_mode": str(cfg.get("proxy_mode", False)).lower(),
         "workers": cfg.get("workers", 2),
         "max_cron_threads": 1 if cfg.get("cron_enabled", False) else 0,

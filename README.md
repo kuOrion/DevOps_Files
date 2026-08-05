@@ -12,9 +12,10 @@ incident records, or client-commercial content to anyone else.
   client's `docker-compose.yml`/`odoo.conf` from `templates/` at
   stack-start time.
 - `templates/` — the shared Jinja templates referenced above.
-- `scripts/dev-start.sh` + `scripts/dev_console/` — the developer laptop
-  workflow (Option B): pull a sanitized snapshot, start the container pair,
-  a git flow wrapper (Start Task/Finish Task) on top.
+- `scripts/dev-start.sh` + `scripts/git_console/` (the "Git Console") — the
+  developer laptop workflow (Option B): Get Latest (pull code + fresh
+  sanitized data), Start Container, Send for Review (commit + push, no git
+  concepts exposed).
 - `scripts/bootstrap-dev-laptop.sh` — one-time new-laptop setup.
 - `scripts/render_client.py`/`render-client.sh` — internal, called by
   `dev-start.sh`, not run directly by devs.

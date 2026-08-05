@@ -39,6 +39,17 @@ services:
       - {{ addons_host_path }}:/mnt/extra-addons
       - {{ config_host_path }}:/etc/odoo
     restart: unless-stopped
+{% if dev_mode %}
+    # dev_mode MUST be passed as a --dev command-line flag, not an
+    # odoo.conf key -- Odoo's config parser unconditionally recomputes
+    # self.options['dev_mode'] from the parsed --dev CLI option alone,
+    # silently discarding whatever's in the config file (found live,
+    # 2026-08-05 -- odoo.conf said dev_mode=reload,qweb,xml but a real
+    # `odoo.tools.config['dev_mode']` check inside the running container
+    # showed an empty list; the entrypoint script does forward extra args
+    # after "odoo" straight through, confirmed via /entrypoint.sh).
+    command: ["odoo", "--dev={{ dev_mode }}"]
+{% endif %}
 
 volumes:
   odoo-db-data:

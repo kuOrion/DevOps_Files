@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>ERP16 dev console</title>
+<title>Git Console</title>
 <style>
   :root {
     --bg: #fbfbfa; --surface: #f2f1ee; --card: #ffffff;
@@ -40,7 +40,6 @@
     display: flex; align-items: center; justify-content: center; letter-spacing: -0.02em;
   }
   .header h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
-  .header .sub { font-size: 14px; color: var(--text-muted); margin-top: 1px; }
   .docker-status { font-size: 14.5px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
   .dot.up { background: #5fa233; } .dot.down { background: var(--danger); }
@@ -60,7 +59,6 @@
   .card-title { font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
   .badge { font-size: 13.5px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
   .badge.running { background: var(--success-bg); color: var(--success-text); }
-  .badge.stopped { background: var(--surface); color: var(--text-muted); }
   .badge.warn { background: var(--warning-bg); color: var(--warning-text); }
   .meta { font-size: 16px; color: var(--text-secondary); line-height: 1.9; }
 
@@ -75,11 +73,8 @@
   button:disabled { opacity: 0.45; cursor: default; }
   button.primary { background: var(--accent-bg); border-color: var(--accent-bg); color: var(--accent-contrast); }
   button.primary:hover:not(:disabled) { opacity: 0.9; background: var(--accent-bg); }
-  button.success { background: #4c8c2b; border-color: #4c8c2b; color: #fff; flex: none; padding: 8px 20px; }
+  button.success { background: #4c8c2b; border-color: #4c8c2b; color: #fff; }
   button.success:hover:not(:disabled) { opacity: 0.9; background: #4c8c2b; }
-  button.danger-outline { border-color: var(--danger); color: var(--danger); }
-  button.ghost { border-color: transparent; background: transparent; }
-  button.ghost:hover:not(:disabled) { background: var(--surface); }
 
   input[type=text] {
     width: 100%; font: inherit; font-size: 16px; padding: 12px 14px; border-radius: 8px;
@@ -88,7 +83,7 @@
   input[type=text]:focus { outline: none; border-color: var(--accent); }
   select {
     width: 100%; font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 10px;
   }
 
   .git-file { display: flex; justify-content: space-between; font-family: ui-monospace, monospace; font-size: 14.5px; padding: 5px 0; }
@@ -108,46 +103,21 @@
 
   .commit-hash { color: var(--text-muted); font-family: ui-monospace, monospace; font-size: 13.5px; }
 
-  .task-tree-row { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 14px; align-items: start; }
-  @media (max-width: 640px) { .task-tree-row { grid-template-columns: 1fr; } }
+  .changes-sends-row { display: grid; grid-template-columns: minmax(300px, 460px) 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 720px) { .changes-sends-row { grid-template-columns: 1fr; } }
 
-  .tree-card { padding-top: 1rem; padding-bottom: 0.6rem; max-height: 620px; overflow-y: auto; }
-  .tree-row { display: flex; gap: 10px; }
-  .tree-rail { position: relative; width: 20px; flex: none; display: flex; justify-content: center; }
-  .tree-rail::before {
-    content: ''; position: absolute; top: 4px; bottom: -14px; left: 50%; width: 1px;
-    background: var(--border); transform: translateX(-50%);
-  }
-  .tree-group .tree-row:last-child .tree-rail::before { bottom: 50%; }
-  .tree-branch-label {
-    display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700;
-    color: var(--text-secondary); margin: 4px 0 8px;
-  }
-  .tree-branch-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warning-text); flex: none; }
-  .tree-branch-empty { font-weight: 500; color: var(--text-muted); }
-  .tree-section-divider {
-    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--text-muted); margin: 6px 0 10px; padding-top: 12px; border-top: 1px solid var(--border);
-  }
-  .tree-dot {
-    width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted);
-    margin-top: 6px; flex: none; position: relative; z-index: 1;
-    border: 2px solid var(--card);
-  }
-  .tree-dot.merge { background: var(--accent-bg); width: 13px; height: 13px; margin-top: 5px; }
-  .tree-info { padding-bottom: 18px; min-width: 0; }
-  .tree-line1 { display: flex; align-items: center; gap: 8px; }
+  .sends-card { padding-top: 1rem; padding-bottom: 0.6rem; max-height: 560px; overflow-y: auto; }
+  .send-row { display: flex; gap: 10px; padding: 8px 0; }
   .avatar {
-    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #fff; flex: none;
+    width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11.5px; font-weight: 700; color: #fff; flex: none; margin-top: 1px;
   }
-  .tree-subject { font-size: 15.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tree-meta { font-size: 14px; color: var(--text-secondary); margin-top: 3px; margin-left: 32px; }
+  .send-info { min-width: 0; }
+  .send-subject { font-size: 15.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .send-meta { font-size: 14px; color: var(--text-secondary); margin-top: 2px; }
 
-  .task-idle { text-align: center; padding: 1rem 0.5rem; }
-  .task-idle p { color: var(--text-secondary); font-size: 15.5px; margin: 0 0 14px; }
-  .task-active-label { font-size: 17px; font-weight: 700; }
-  .task-active-sub { font-size: 14.5px; color: var(--text-secondary); font-weight: 500; margin-top: 2px; }
+  .changes-idle { text-align: center; padding: 1rem 0.5rem; }
+  .changes-idle p { color: var(--text-secondary); font-size: 15.5px; margin: 0; }
 
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -159,10 +129,7 @@
   <div class="header">
     <div class="brand">
       <div class="brand-mark">16</div>
-      <div>
-        <h1>ERP16 dev console</h1>
-        <div class="sub">local development, wrapping dev-start.sh + git</div>
-      </div>
+      <h1>Git Console</h1>
     </div>
     <div class="docker-status" id="docker-status"><span class="dot" id="docker-dot"></span><span id="docker-text">checking docker...</span></div>
   </div>
@@ -170,66 +137,42 @@
   <div class="section-label">Clients / Containers</div>
   <div class="grid" id="clients-grid"></div>
 
-  <div class="section-label" id="git-label">Task</div>
-  <div class="task-tree-row">
+  <div class="changes-sends-row" style="margin-top: 2.25rem;">
     <div>
-      <div class="card" id="git-card">
-        <div id="task-idle-view" class="task-idle" style="display:none;">
-          <p>No task in progress on <span id="repo-name-idle" style="font-weight:500;"></span>. Starting one pulls the latest code first.</p>
-          <input type="text" id="task-name" placeholder="What are you working on?">
-          <button class="primary" style="width:100%;" onclick="startTask()">Start New Task</button>
+      <div class="section-label" style="margin-top:0;">Changes</div>
+      <div class="card" id="changes-card">
+        <div id="changes-idle-view" class="changes-idle" style="display:none;">
+          <p>No changes yet in <span id="repo-name-idle" style="font-weight:600;"></span>.</p>
         </div>
 
-        <div id="task-active-view" style="display:none;">
+        <div id="changes-active-view" style="display:none;">
           <div class="card-title-row">
-            <div>
-              <div class="task-active-label" id="task-name-label"></div>
-              <div class="task-active-sub" id="repo-name-active"></div>
-            </div>
-            <span class="badge warn" id="git-dirty-badge" style="display:none;"></span>
+            <span style="font-weight:600; font-size:16px;" id="repo-name-active"></span>
+            <span class="badge warn" id="changes-badge"></span>
           </div>
-
           <div id="git-files"></div>
-          <div id="clean-note" class="empty-note" style="display:none;">Working tree clean -- saved and pushed.</div>
-
-          <div class="divider" id="commit-box" style="display:none;">
-            <div id="diff-view" class="diff-view" style="display:none;"></div>
-            <input type="text" id="commit-msg" placeholder="Describe what changed">
-            <div class="btn-row">
-              <button onclick="toggleDiff()" id="diff-toggle-btn">Review diff</button>
-              <button class="primary" onclick="doCommit()">Save Progress</button>
-            </div>
-          </div>
 
           <div class="divider">
-            <button class="primary" style="width:100%;" onclick="finishTask()">Finish Task -- merge into main</button>
+            <div id="diff-view" class="diff-view" style="display:none;"></div>
+            <input type="text" id="send-msg" placeholder="What did you change? (required)">
+            <div class="btn-row">
+              <button onclick="toggleDiff()" id="diff-toggle-btn">Review diff</button>
+              <button class="primary" onclick="sendForReview()">Send for Review</button>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="btn-row" style="margin-top: 14px;">
-        <button onclick="openAddons()">Open custom addons</button>
-        <button onclick="openClientsYaml()">Open clients.yaml</button>
       </div>
     </div>
 
     <div>
-      <div class="section-label" style="margin-top: 0;">Live Git Tree</div>
-      <div class="card tree-card" id="tree-card"></div>
+      <div class="section-label" style="margin-top:0;">Recent Sends</div>
+      <div class="card sends-card" id="sends-card"></div>
     </div>
   </div>
 </div>
 
 <script>
-const ADDONS_DIR = "__ADDONS_DIR__";
 let lastStatus = null;
-
-async function openAddons() {
-  await fetch('/api/open-addons', {method: 'POST'});
-}
-
-async function openClientsYaml() {
-  await fetch('/api/open-clients-yaml', {method: 'POST'});
-}
 
 async function refreshClients() {
   const res = await fetch('/api/clients');
@@ -262,10 +205,18 @@ async function refreshClients() {
 
   let options = stoppedIds.map(id => `<option value="${id}">${id}</option>`).join('');
   const anyBusy = Object.values(data.jobs).some(j => j.state === 'running');
+  const disabledAttr = anyBusy || !stoppedIds.length ? 'disabled' : '';
   grid.innerHTML += `
-    <div class="card" style="border-style:dashed; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; box-shadow:none;">
+    <div class="card" style="border-style:dashed; box-shadow:none;">
       <select id="client-picker">${options}</select>
-      <button class="success" onclick="startClient()" ${anyBusy || !stoppedIds.length ? 'disabled' : ''}>Start client</button>
+      <div class="btn-row">
+        <button onclick="getLatest()" ${disabledAttr}>Get Latest</button>
+        <button class="success" onclick="startClient()" ${disabledAttr}>Start Container</button>
+      </div>
+      <div class="meta" style="font-size:13.5px; margin-top:8px;">
+        <b>Get Latest</b>: fresh code + fresh data for the picked client.<br>
+        <b>Start Container</b>: bring it up with whatever's already cached -- do this once, then keep editing; saved changes just work.
+      </div>
     </div>`;
 }
 
@@ -275,22 +226,27 @@ async function startClient() {
   refreshClients();
 }
 
+async function getLatest() {
+  const id = document.getElementById('client-picker').value;
+  await fetch(`/api/get-latest/${id}`, {method: 'POST'});
+  refreshClients();
+}
+
 async function stopClient(id) {
   await fetch(`/api/stop/${id}`, {method: 'POST'});
   refreshClients();
-  refreshGit();
+  refreshChanges();
 }
 
-async function refreshGit() {
+async function refreshChanges() {
   const res = await fetch('/api/git/status');
   const data = await res.json();
   lastStatus = data;
-  document.getElementById('git-label').textContent = 'Task';
 
-  const idleView = document.getElementById('task-idle-view');
-  const activeView = document.getElementById('task-active-view');
+  const idleView = document.getElementById('changes-idle-view');
+  const activeView = document.getElementById('changes-active-view');
 
-  if (!data.on_task) {
+  if (!data.files.length) {
     idleView.style.display = 'block';
     activeView.style.display = 'none';
     document.getElementById('repo-name-idle').textContent = data.repo;
@@ -300,27 +256,14 @@ async function refreshGit() {
   idleView.style.display = 'none';
   activeView.style.display = 'block';
   document.getElementById('repo-name-active').textContent = data.repo;
-  document.getElementById('task-name-label').textContent = data.branch.replace(/^task\//, '').replace(/-/g, ' ');
 
-  const dirtyBadge = document.getElementById('git-dirty-badge');
-  const commitBox = document.getElementById('commit-box');
-  const cleanNote = document.getElementById('clean-note');
-  const filesDiv = document.getElementById('git-files');
-  if (data.files.length) {
-    dirtyBadge.style.display = 'inline-block';
-    dirtyBadge.textContent = `${data.files.length} unsaved`;
-    commitBox.style.display = 'block';
-    cleanNote.style.display = 'none';
-    filesDiv.innerHTML = data.files.map(f => {
-      const cls = f.code.includes('A') ? 'code-added' : f.code.includes('D') ? 'code-deleted' : 'code-modified';
-      return `<div class="git-file"><span><span class="${cls}">${f.code}</span>&nbsp;&nbsp;${f.path}</span><span style="color:var(--text-muted)">+${f.added} -${f.removed}</span></div>`;
-    }).join('');
-  } else {
-    dirtyBadge.style.display = 'none';
-    commitBox.style.display = 'none';
-    filesDiv.innerHTML = '';
-    cleanNote.style.display = 'block';
-  }
+  const badge = document.getElementById('changes-badge');
+  badge.textContent = `${data.files.length} unsaved`;
+
+  document.getElementById('git-files').innerHTML = data.files.map(f => {
+    const cls = f.code.includes('A') ? 'code-added' : f.code.includes('D') ? 'code-deleted' : 'code-modified';
+    return `<div class="git-file"><span><span class="${cls}">${f.code}</span>&nbsp;&nbsp;${f.path}</span><span style="color:var(--text-muted)">+${f.added} -${f.removed}</span></div>`;
+  }).join('');
 }
 
 async function toggleDiff() {
@@ -346,43 +289,22 @@ async function toggleDiff() {
   btn.textContent = 'Hide diff';
 }
 
-async function startTask() {
-  const name = document.getElementById('task-name').value.trim();
-  if (!name) return;
-  const res = await fetch('/api/task/start', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name}),
-  });
-  if (res.ok) { document.getElementById('task-name').value = ''; refreshGit(); refreshTree(); }
-  else { const err = await res.json(); alert('Could not start task: ' + (err.error || 'unknown error')); }
-}
-
-async function finishTask() {
-  if (lastStatus && lastStatus.files && lastStatus.files.length) {
-    const msg = document.getElementById('commit-msg').value.trim();
-    if (!msg) { alert('Describe your remaining changes in the box above before finishing.'); return; }
-    await doCommit();
-  }
-  if (!confirm('Merge this task into main and push? This finishes the task.')) return;
-  const res = await fetch('/api/task/end', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
-  if (res.ok) { refreshGit(); refreshTree(); }
-  else { const err = await res.json(); alert(err.error || 'Could not finish task.'); }
-}
-
-async function doCommit() {
-  const message = document.getElementById('commit-msg').value.trim();
-  if (!message) return;
-  const res = await fetch('/api/git/commit', {
+async function sendForReview() {
+  const message = document.getElementById('send-msg').value.trim();
+  if (!message) { alert('Describe what changed first -- a few words is enough.'); return; }
+  const res = await fetch('/api/send-for-review', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({message}),
   });
   if (res.ok) {
-    document.getElementById('commit-msg').value = '';
-    refreshGit();
-    refreshTree();
+    document.getElementById('send-msg').value = '';
+    document.getElementById('diff-view').style.display = 'none';
+    document.getElementById('diff-toggle-btn').textContent = 'Review diff';
+    refreshChanges();
+    refreshSends();
   } else {
     const err = await res.json();
-    alert('Save failed: ' + (err.error || 'unknown error'));
+    alert(err.error || 'Could not send for review.');
   }
 }
 
@@ -396,41 +318,27 @@ function initials(name) {
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
 }
 
-function renderCommitRows(commits) {
-  if (!commits.length) return '';
-  return '<div class="tree-group">' + commits.map(c => `
-    <div class="tree-row">
-      <div class="tree-rail"><span class="tree-dot ${c.is_merge ? 'merge' : ''}"></span></div>
-      <div class="tree-info">
-        <div class="tree-line1">
-          <span class="avatar" style="background:${avatarColor(c.author)}">${initials(c.author)}</span>
-          <span class="tree-subject">${c.subject}</span>
-        </div>
-        <div class="tree-meta">${c.author} &middot; ${c.when} &middot; <span class="commit-hash">${c.hash}</span></div>
-      </div>
-    </div>`).join('') + '</div>';
-}
-
-async function refreshTree() {
-  const res = await fetch('/api/git/tree');
+async function refreshSends() {
+  const res = await fetch('/api/recent-sends');
   const data = await res.json();
-  const el = document.getElementById('tree-card');
-
-  let html = '';
-  for (const task of data.active_tasks) {
-    const label = task.branch.replace(/^task\//, '').replace(/-/g, ' ');
-    html += `<div class="tree-branch-label"><span class="tree-branch-dot"></span>${label}${task.commits.length ? '' : ' <span class="tree-branch-empty">(just started, no commits yet)</span>'}</div>`;
-    html += renderCommitRows(task.commits);
+  const el = document.getElementById('sends-card');
+  if (!data.sends.length) {
+    el.innerHTML = '<div class="empty-note">No sends yet</div>';
+    return;
   }
-  if (data.active_tasks.length) html += '<div class="tree-section-divider">main</div>';
-  html += data.main.length ? renderCommitRows(data.main) : '<div class="empty-note">No commits yet</div>';
-
-  el.innerHTML = html;
+  el.innerHTML = data.sends.map(s => `
+    <div class="send-row">
+      <span class="avatar" style="background:${avatarColor(s.author)}">${initials(s.author)}</span>
+      <div class="send-info">
+        <div class="send-subject">${s.subject}</div>
+        <div class="send-meta">${s.author} &middot; ${s.when} &middot; <span class="commit-hash">${s.hash}</span></div>
+      </div>
+    </div>`).join('');
 }
 
 async function refreshDockerStatus() {
   try {
-    const res = await fetch('/api/clients');
+    await fetch('/api/clients');
     document.getElementById('docker-dot').className = 'dot up';
     document.getElementById('docker-text').textContent = 'Docker running';
   } catch (e) {
@@ -442,8 +350,8 @@ async function refreshDockerStatus() {
 function refreshAll() {
   refreshDockerStatus();
   refreshClients();
-  refreshGit();
-  refreshTree();
+  refreshChanges();
+  refreshSends();
 }
 
 refreshAll();

@@ -114,4 +114,4 @@ fi
 
 say "Done"
 echo "  Next: cd $REPO_DIR/DevOps_Files && scripts/dev-start.sh orion_test"
-echo "  Or launch the dev console: python3 scripts/dev_console/app.py"
+echo "  Or launch the Git Console: python3 scripts/git_console/app.py"

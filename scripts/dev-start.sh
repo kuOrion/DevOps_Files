@@ -84,7 +84,8 @@ python3 "$BUILD_DIR/scripts/render_client.py" "$CLIENT_ID" \
     --addons-path "$ADDONS_PATH" \
     --aws-profile "$AWS_PROFILE" \
     --aws-region "$AWS_REGION" \
-    --local-secrets
+    --local-secrets \
+    --dev-mode
 T_RENDER=$(( $(now) - _t0 ))
 
 DB_NAME=$(python3 -c "
