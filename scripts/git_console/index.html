@@ -116,7 +116,7 @@
   .changes-row { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 14px; align-items: start; }
   @media (max-width: 760px) { .changes-row { grid-template-columns: 1fr; } }
 
-  .diff-detail-card { min-height: 160px; max-height: 640px; overflow-y: auto; }
+  .diff-detail-card { min-height: 160px; max-height: 62vh; overflow-y: auto; }
   .diff-detail-placeholder { color: var(--text-secondary); font-size: 15.5px; text-align: center; padding: 2rem 1rem; }
   .diff-file { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
   .diff-file:last-child { margin-bottom: 0; }
@@ -174,7 +174,19 @@
   </div>
 
   <div class="section-label">Clients / Containers</div>
-  <div class="grid" id="clients-grid"></div>
+  <div class="grid" id="clients-grid">
+    <div class="card" id="picker-card" style="border-style:dashed; box-shadow:none;">
+      <select id="client-picker"></select>
+      <div class="btn-row">
+        <button onclick="getLatest()" id="get-latest-btn">Get Latest</button>
+        <button class="success" onclick="startClient()" id="start-container-btn">Start Container</button>
+      </div>
+      <div class="meta" style="font-size:13.5px; margin-top:8px;">
+        <b>Get Latest</b>: fresh code + fresh data for the picked client.<br>
+        <b>Start Container</b>: bring it up with whatever's already cached -- do this once, then keep editing; saved changes just work.
+      </div>
+    </div>
+  </div>
 
   <div class="section-label">Changes</div>
   <div class="changes-row">
@@ -193,8 +205,8 @@
         <div class="divider">
           <input type="text" id="send-msg" placeholder="Please describe changes" style="display:none;">
           <div class="btn-row">
-            <button onclick="saveChanges()">Save Changes</button>
             <button onclick="toggleDiff()" id="diff-toggle-btn">Review changes</button>
+            <button onclick="saveChanges()">Save Changes</button>
             <button class="primary" onclick="sendForReview()" id="send-btn">Send for Review</button>
           </div>
         </div>
@@ -224,17 +236,40 @@ function stepLabel(logLines) {
   return last.replace(/^===\s*/, '').replace(/\s*===$/, '') || 'Working...';
 }
 
+let lastStoppedKey = null;
+
 async function refreshClients() {
   const res = await fetch('/api/clients');
   const data = await res.json();
 
-  const previousSelection = document.getElementById('client-picker')?.value;
-
-  const grid = document.getElementById('clients-grid');
-  grid.innerHTML = '';
-
   const runningIds = new Set(data.clients.filter(c => c.running).map(c => c.client_id));
   const startingIds = Object.keys(data.jobs).filter(id => data.jobs[id].state === 'running' && !runningIds.has(id));
+  const runningCards = data.clients.filter(c => c.running);
+  const stoppedIds = data.clients.filter(c => !c.running && !startingIds.includes(c.client_id)).map(c => c.client_id);
+
+  // The picker card (#picker-card) is a STABLE element, defined once in
+  // the static HTML and never recreated here -- rebuilding it every 3s
+  // poll (the old approach) forcibly closed the native <select> dropdown
+  // if it happened to be open, and silently reset whatever the user had
+  // picked. Only touch what actually needs to change.
+  const stoppedKey = stoppedIds.join(',');
+  if (stoppedKey !== lastStoppedKey) {
+    lastStoppedKey = stoppedKey;
+    const picker = document.getElementById('client-picker');
+    const previousSelection = picker.value;
+    picker.innerHTML = stoppedIds.map(id => `<option value="${id}">${id}</option>`).join('');
+    if (stoppedIds.includes(previousSelection)) picker.value = previousSelection;
+  }
+  const anyBusy = startingIds.length > 0 || Object.values(data.jobs).some(j => j.state === 'running');
+  const pickerDisabled = anyBusy || !stoppedIds.length;
+  document.getElementById('get-latest-btn').disabled = pickerDisabled;
+  document.getElementById('start-container-btn').disabled = pickerDisabled;
+
+  // Dynamic cards (starting/running) live after #picker-card in DOM
+  // order (picker stays first/leftmost) -- remove and reinsert just
+  // these each poll, never touching the picker card itself.
+  document.querySelectorAll('.dynamic-client-card').forEach(el => el.remove());
+  let dynamicHtml = '';
 
   // Clients mid Get Latest / Start Container, before Docker even reports
   // them as running yet (rendering/pulling/restoring can take 20-100+s
@@ -242,8 +277,8 @@ async function refreshClients() {
   // instead of the UI looking frozen.
   for (const id of startingIds) {
     const job = data.jobs[id];
-    grid.innerHTML += `
-      <div class="card">
+    dynamicHtml += `
+      <div class="card dynamic-client-card">
         <div class="card-title-row">
           <span class="card-title">${id}</span>
           <span class="badge starting">Starting</span>
@@ -254,14 +289,11 @@ async function refreshClients() {
       </div>`;
   }
 
-  const runningCards = data.clients.filter(c => c.running);
-  const stoppedIds = data.clients.filter(c => !c.running && !startingIds.includes(c.client_id)).map(c => c.client_id);
-
   for (const c of runningCards) {
     const job = data.jobs[c.client_id];
     const busy = job && job.state === 'running';
-    grid.innerHTML += `
-      <div class="card">
+    dynamicHtml += `
+      <div class="card dynamic-client-card">
         <div class="card-title-row">
           <span class="card-title">${c.display_name}</span>
           <span class="badge running">Running</span>
@@ -280,32 +312,7 @@ async function refreshClients() {
       </div>`;
   }
 
-  let options = stoppedIds.map(id => `<option value="${id}">${id}</option>`).join('');
-  const anyBusy = startingIds.length > 0 || Object.values(data.jobs).some(j => j.state === 'running');
-  const disabledAttr = anyBusy || !stoppedIds.length ? 'disabled' : '';
-  grid.innerHTML += `
-    <div class="card" style="border-style:dashed; box-shadow:none;">
-      <select id="client-picker">${options}</select>
-      <div class="btn-row">
-        <button onclick="getLatest()" ${disabledAttr}>Get Latest</button>
-        <button class="success" onclick="startClient()" ${disabledAttr}>Start Container</button>
-      </div>
-      <div class="meta" style="font-size:13.5px; margin-top:8px;">
-        <b>Get Latest</b>: fresh code + fresh data for the picked client.<br>
-        <b>Start Container</b>: bring it up with whatever's already cached -- do this once, then keep editing; saved changes just work.
-      </div>
-    </div>`;
-
-  // Restore the picked client across the 3s poll -- a fresh <select> was
-  // just rebuilt above, which silently resets to its first <option> and
-  // discards whatever the user had picked (found live: picking
-  // puna_eye_care kept reverting to orion_test a few seconds later).
-  if (previousSelection) {
-    const picker = document.getElementById('client-picker');
-    if (picker && [...picker.options].some(o => o.value === previousSelection)) {
-      picker.value = previousSelection;
-    }
-  }
+  document.getElementById('picker-card').insertAdjacentHTML('afterend', dynamicHtml);
 }
 
 async function startClient() {
