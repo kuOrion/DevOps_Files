@@ -89,8 +89,15 @@ def api_clients():
     clients = load_clients()
     running = docker_ps()
     out = [client_status(cid, cfg, running) for cid, cfg in clients.items()]
+    # Full {state, log} per job, not just the state string -- the frontend
+    # needs the log tail to show real progress for a client that's still
+    # starting (rendering/pulling/restoring) and therefore doesn't show up
+    # in `docker ps` as running yet, which can take 20-100+s on a cold
+    # pull. Found live: the old state-only response silently broke the
+    # busy-log display from the start (frontend was already reading
+    # job.log off what was actually just a bare string).
     with _jobs_lock:
-        jobs_copy = {k: v["state"] for k, v in _jobs.items()}
+        jobs_copy = {k: {"state": v["state"], "log": v["log"][-8:]} for k, v in _jobs.items()}
     return jsonify({"clients": out, "jobs": jobs_copy})
 
 
