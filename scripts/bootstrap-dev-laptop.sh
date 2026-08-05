@@ -86,16 +86,16 @@ else
 fi
 
 say "Repositories"
-if [ -d "$REPO_DIR/erp16-operations/.git" ]; then
-    ok "erp16-operations already cloned at $REPO_DIR/erp16-operations"
+if [ -d "$REPO_DIR/DevOps_Files/.git" ]; then
+    ok "DevOps_Files already cloned at $REPO_DIR/DevOps_Files"
 else
-    doing "cloning erp16-operations into $REPO_DIR/erp16-operations"
-    git clone https://github.com/cj78/erp16-operations.git "$REPO_DIR/erp16-operations"
+    doing "cloning DevOps_Files into $REPO_DIR/DevOps_Files"
+    git clone https://github.com/cj78/DevOps_Files.git "$REPO_DIR/DevOps_Files"
 fi
 if [ -d "$REPO_DIR/erp16-custom-addons/.git" ]; then
     ok "erp16-custom-addons already cloned at $REPO_DIR/erp16-custom-addons"
 else
-    doing "cloning erp16-custom-addons into $REPO_DIR/erp16-custom-addons (sibling to erp16-operations, matching what dev-start.sh expects)"
+    doing "cloning erp16-custom-addons into $REPO_DIR/erp16-custom-addons (sibling to DevOps_Files, matching what dev-start.sh expects)"
     git clone https://github.com/cj78/erp16-custom-addons.git "$REPO_DIR/erp16-custom-addons"
 fi
 
@@ -113,5 +113,5 @@ else
 fi
 
 say "Done"
-echo "  Next: cd $REPO_DIR/erp16-operations && scripts/dev-start.sh orion_test"
+echo "  Next: cd $REPO_DIR/DevOps_Files && scripts/dev-start.sh orion_test"
 echo "  Or launch the dev console: python3 scripts/dev_console/app.py"

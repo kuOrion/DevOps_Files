@@ -228,3 +228,136 @@ clients:
     backup:
       daily_retention_days: 10
       monthly_snapshot_retention_months: 12
+
+  puna_eye_care:
+    display_name: "Puna Eye Care"
+    db_name: puna_eye_care
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: cloud
+    onprem_tier: null
+    list_db: true             # flip to false once per-client HAProxy routing exists
+    proxy_mode: false         # true once behind HAProxy
+    workers: 2
+    cron_enabled: false       # sandbox-safety default - see orion-internal's note above
+    http_port: 8099           # unique per client on one host
+    longpolling_port: 8102
+    domain: null
+    secrets_ref: /erp16-sandbox/puna_eye_care   # sandbox SSM path prefix (see build/README.md); repointed at
+                                                 # the client's real AWS account once milestone 2 is production-ready
+    modules:                  # verified 2026-08-05 via ir_module_module state='installed' on production,
+                               # intersected against addons/all/latest/ - full install has 121 modules, but
+                               # only these are outside Odoo's own core/l10n_in package and need to be present
+                               # under erp16-custom-addons
+      - orion_Export_OA_report
+      - orion_pr_ex_in_report
+      - orion_sale_report
+      - orion_sales
+      - orion_sales_schedule
+      - report_py3o
+      - sh_product_configurator
+    backup:
+      daily_retention_days: 10
+      monthly_snapshot_retention_months: 12
+
+  db_test:
+    display_name: "DB Test"
+    db_name: db_test
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: cloud
+    onprem_tier: null
+    list_db: true             # flip to false once per-client HAProxy routing exists
+    proxy_mode: false         # true once behind HAProxy
+    workers: 2
+    cron_enabled: false       # sandbox-safety default - see orion-internal's note above
+    http_port: 8109           # unique per client on one host
+    longpolling_port: 8112
+    domain: null
+    secrets_ref: /erp16-sandbox/db_test   # sandbox SSM path prefix (see build/README.md); repointed at
+                                          # the client's real AWS account once milestone 2 is production-ready
+    modules:                  # verified 2026-08-05 via ir_module_module state='installed' on production,
+                               # intersected against addons/all/latest/ - full install has 82 modules, but
+                               # only these are outside Odoo's own core package and need to be present
+                               # under erp16-custom-addons
+      - nspl_project_task_access
+      - orion_manufacturing
+      - orion_sale_report
+      - report_py3o
+    backup:
+      daily_retention_days: 10
+      monthly_snapshot_retention_months: 12
+
+  # Not a real client -- the sanitization pipeline's own shared, single-slot
+  # working area (see render_client.py's --container-prefix docstring and
+  # ROADMAP.md's sanitization-rework entry). db_name/dbfilter are placeholders
+  # that are never actually used: the pipeline scripts talk to Postgres and
+  # `odoo shell` directly and never go through the HTTP layer this dbfilter
+  # would gate, since this container is "not visited by devs/admin directly"
+  # by design. modules: [] deliberately -- this container will host many
+  # different clients' restored data over time (recreated per pipeline run),
+  # not one fixed install, so there's no single module list to validate
+  # against; the full erp16-custom-addons mount covers whichever client is
+  # currently loaded.
+  sanitize:
+    display_name: "Sanitization pipeline (shared working area)"
+    db_name: sanitize_scratch
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: cloud
+    onprem_tier: null
+    list_db: true
+    proxy_mode: false
+    workers: 1                # never serves real traffic, no need for 2
+    cron_enabled: false
+    http_port: 8199           # unique per host; never intended to be browsed, tunnel-only if ever needed
+    longpolling_port: 8202
+    domain: null              # never gets public routing -- sanitize area is never client-facing
+    secrets_ref: /erp16-sandbox/sanitize
+    modules: []
+    backup:
+      daily_retention_days: 0        # this container's own data is always ephemeral/regenerated -- nothing here needs backing up
+      monthly_snapshot_retention_months: 0
+
+  # Staging: one persistent multi-DB container pair, hosting every live
+  # client's database at once for admin review (Odoo's native multi-db
+  # support -- safe here specifically because this container is never
+  # client-facing and never carries real concurrent traffic, unlike the
+  # single-shared-Postgres flaw this whole redesign exists to fix for
+  # live). modules is a placeholder like sanitize's -- real per-client
+  # databases are pulled in individually from live-area (pull_from_live.sh,
+  # one DB at a time) and never tracked here.
+  # db_name AND dbfilter must both be empty for the multi-db selector to
+  # actually list every database (found live, 2026-08-05, on
+  # parus_instruments's first pull) -- Odoo's own list_dbs() has a
+  # shortcut: if dbfilter is empty but db_name is set, it skips querying
+  # Postgres entirely and just returns db_name's value as the one-item
+  # list, silently ignoring every other database that actually exists.
+  # Only when both are empty does it fall through to the real
+  # pg_database query. Reachable only via SSH tunnel from sachin-admin's
+  # laptop -- never a HAProxy route, never an open port -- so
+  # list_db: true is safe here even though it's a standing security TODO
+  # against real production.
+  staging:
+    display_name: "Staging (shared admin review area, all clients)"
+    db_name: ""
+    dbfilter: ""
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: cloud
+    onprem_tier: null
+    list_db: true
+    proxy_mode: false
+    workers: 2                # needs >=2 for Odoo to actually render PDF reports (found live,
+                               # 2026-08-05 -- 1 worker logs "need at least two workers to print
+                               # a pdf" and silently can't); admin's review explicitly includes
+                               # printing PDFs, unlike sanitize which never serves real traffic
+    cron_enabled: false
+    http_port: 8209           # unique per host; SSH-tunnel-only, never browsed directly
+    longpolling_port: 8212
+    domain: null              # never gets public routing -- staging is never client-facing
+    secrets_ref: /erp16-sandbox/staging
+    modules: []
+    backup:
+      daily_retention_days: 0        # staging's own data is always a disposable pull from live-area -- nothing here needs backing up
+      monthly_snapshot_retention_months: 0

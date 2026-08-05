@@ -24,7 +24,44 @@
 # add any newly-declared-but-unmet dependency here -- this file is the
 # one place "known package gaps" live, not scattered runtime workarounds
 # in dev-start.sh/deploy.sh.
+#
+# pyahocorasick (import name: ahocorasick): needed by
+# sanitize/substring_hunt_scan.py's full-database verification scan --
+# not an addon dependency, a sanitization-pipeline one. Found the same
+# way as py3o originally was: manually pip-installed into the old shared
+# orion_test-web_orion_test-1 container at some point during phase-1
+# interactive development, never captured anywhere, so the freshly-built
+# sanitize-web container (2026-08-05, the per-client-isolation rework)
+# didn't have it either. Same fix, same reason.
+#
+# ROOT CAUSE of "lost on every container recreation" (2026-08-05, found
+# while debugging why this fresh container still didn't have the package
+# despite a successful build): the base odoo image runs as non-root user
+# `odoo`, so a plain `pip3 install` here silently falls back to a
+# --user install under $HOME (/var/lib/odoo/.local/...). But
+# /var/lib/odoo is also this compose file's `odoo-web-data` VOLUME mount
+# point -- the volume's content shadows anything the image baked in at
+# that path, every single time a container is freshly created. The
+# packages *were* genuinely installed at build time (confirmed via
+# `docker run --rm <image> python3 -c 'import ahocorasick'` working
+# against the bare image, only breaking once the volume-mounted
+# container overlays that path). Fix: install as root, which lands in
+# system-wide site-packages (/usr/local/lib/python3.9/dist-packages) --
+# outside any volume mount, so it actually survives.
+# libreoffice: report_py3o declares this as a 'deb' external_dependency
+# (alongside its 'python' ones above), but check_missing_deps.py only ever
+# checked the 'python' key -- so this specific gap went undetected by the
+# exact tool built to catch it, until every py3o-based PDF report (found
+# live, 2026-08-05, on orion_test/orion-internal in staging) started
+# failing at generation time with "libreoffice runtime is required... but
+# is not found". Scanner extended to also check 'deb'/'bin' going forward;
+# this is the actual fix for the gap it should have caught the first time.
 ARG ODOO_VERSION=16.0
 FROM odoo:${ODOO_VERSION}
 
-RUN pip3 install --no-cache-dir py3o.formats py3o.template py3o.fusion
+USER root
+RUN pip3 install --no-cache-dir py3o.formats py3o.template py3o.fusion pyahocorasick \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends libreoffice \
+    && rm -rf /var/lib/apt/lists/*
+USER odoo

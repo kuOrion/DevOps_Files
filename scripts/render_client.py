@@ -135,6 +135,14 @@ def main():
     ap.add_argument("--out", default=None, help="Output dir (default: build/generated/<client_id>)")
     ap.add_argument("--aws-profile", default=None, help="AWS CLI profile for SSM resolution (default: whatever's active)")
     ap.add_argument("--aws-region", default="ap-south-1", help="AWS region for SSM resolution")
+    ap.add_argument("--local-secrets", action="store_true",
+                     help="Force the local secrets.local.yaml fallback even if the client has "
+                          "a secrets_ref configured -- for developer laptops, whose scoped AWS "
+                          "identity (e.g. sarthak-dev) is deliberately denied SSM access "
+                          "entirely (see IDENTITIES.md). A dev's local container is fully "
+                          "isolated from the sandbox's own stack, so its password never needs "
+                          "to match the SSM-stored one -- confirmed live 2026-08-05, dev-start.sh "
+                          "failed outright under a real scoped dev profile without this flag.")
     args = ap.parse_args()
 
     clients = load_yaml(CLIENTS_YAML).get("clients", {})
@@ -145,8 +153,9 @@ def main():
 
     validate_modules(args.client_id, cfg, args.addons_path)
 
+    secrets_ref = None if args.local_secrets else cfg.get("secrets_ref")
     db_password, master_password = resolve_secrets(
-        args.client_id, cfg.get("secrets_ref"), args.aws_profile, args.aws_region
+        args.client_id, secrets_ref, args.aws_profile, args.aws_region
     )
 
     # Always absolute -- a relative --out gets embedded as-is into the
@@ -163,6 +172,11 @@ def main():
         "odoo_version": cfg["odoo_version"],
         "postgres_version": cfg["postgres_version"],
         "list_db": str(cfg.get("list_db", False)).lower(),
+        # Every existing client keeps today's behavior (locked to its own db)
+        # unless clients.yaml explicitly overrides -- staging is the one area
+        # that needs this empty (unfiltered), since it hosts every live
+        # client's database at once for admin review.
+        "dbfilter": cfg.get("dbfilter", f"^{cfg['db_name']}$"),
         "proxy_mode": str(cfg.get("proxy_mode", False)).lower(),
         "workers": cfg.get("workers", 2),
         "max_cron_threads": 1 if cfg.get("cron_enabled", False) else 0,
