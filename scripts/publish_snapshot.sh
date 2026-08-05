@@ -12,6 +12,14 @@
 # AWS profile (confirmed working: full read/write on erp16-sandbox-snapshots).
 #
 # Usage: ./publish_snapshot.sh <client_id>
+#
+# Re-pointed 2026-08-05 from the old orion_test-db_orion_test-1/
+# orion_test-web_orion_test-1 shared-instance container names to
+# sanitize-db/sanitize-web (the single shared working area the rest of
+# the pipeline rework introduced) -- see ROADMAP.md's sanitization-rework
+# entries. Run this after run_pipeline.sh; that script's own cleanup step
+# only removes the raw handoff dump/filestore, never the sanitized output
+# itself, so it's still sitting in sanitize-db/sanitize-web waiting here.
 set -euo pipefail
 
 CLIENT_ID="${1:?Usage: publish_snapshot.sh <client_id>}"
@@ -33,7 +41,7 @@ WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
 
 echo "=== Dumping ${SANITIZED_DB_NAME} on the sandbox ==="
-ssh sandbox "docker exec orion_test-db_orion_test-1 pg_dump -U odoo --no-owner --no-privileges -Fc ${SANITIZED_DB_NAME} > /tmp/publish_${CLIENT_ID}.dump"
+ssh sandbox "docker exec sanitize-db pg_dump -U odoo --no-owner --no-privileges -Fc ${SANITIZED_DB_NAME} > /tmp/publish_${CLIENT_ID}.dump"
 
 echo "=== Tarring filestore on the sandbox ==="
 # Tar the CONTENTS of the sanitized db's filestore folder, not the folder
@@ -43,15 +51,15 @@ echo "=== Tarring filestore on the sandbox ==="
 # "orm_test/" prefix extracts to the wrong path on the developer's
 # machine and every attachment/asset lookup 404s -- found exactly this
 # way during dev-start.sh's first real end-to-end test.
-ssh sandbox "docker exec orion_test-web_orion_test-1 tar -C /var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME} -czf /tmp/publish_${CLIENT_ID}_filestore.tar.gz ."
-ssh sandbox "docker cp orion_test-web_orion_test-1:/tmp/publish_${CLIENT_ID}_filestore.tar.gz /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
+ssh sandbox "docker exec sanitize-web tar -C /var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME} -czf /tmp/publish_${CLIENT_ID}_filestore.tar.gz ."
+ssh sandbox "docker cp sanitize-web:/tmp/publish_${CLIENT_ID}_filestore.tar.gz /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
 
 echo "=== Pulling both artifacts back to this machine ==="
 scp -q "sandbox:/tmp/publish_${CLIENT_ID}.dump" "$WORKDIR/db.dump"
 scp -q "sandbox:/tmp/publish_${CLIENT_ID}_filestore.tar.gz" "$WORKDIR/filestore.tar.gz"
 
 echo "=== Cleaning up sandbox-side temp files ==="
-ssh sandbox "rm -f /tmp/publish_${CLIENT_ID}.dump /tmp/publish_${CLIENT_ID}_filestore.tar.gz; docker exec orion_test-web_orion_test-1 rm -f /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
+ssh sandbox "rm -f /tmp/publish_${CLIENT_ID}.dump /tmp/publish_${CLIENT_ID}_filestore.tar.gz; docker exec sanitize-web rm -f /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
 
 echo "=== Uploading to ${S3_PREFIX} ==="
 date -u +%Y-%m-%dT%H:%M:%SZ > "$WORKDIR/published_at.txt"

@@ -58,6 +58,9 @@ DB_SERVICE="db"
 WEB_SERVICE="web"
 
 fail() { echo "ERROR: $1" >&2; exit 1; }
+now() { date +%s; }
+T_RENDER=0; T_PULL=0; T_DB_WAIT=0; T_DB_RESTORE=0; T_FS_RESTORE=0; T_WEB_BOOT=0
+T_SCRIPT_START=$(now)
 
 # --- prerequisite checks ---
 command -v docker >/dev/null 2>&1 || fail "docker not found -- install Docker first"
@@ -75,11 +78,14 @@ if [ "$DOWN" = true ]; then
 fi
 
 echo "=== Rendering docker-compose.yml/odoo.conf for '$CLIENT_ID' ==="
+_t0=$(now)
 python3 "$BUILD_DIR/scripts/render_client.py" "$CLIENT_ID" \
     --container-prefix "$CONTAINER_PREFIX" \
     --addons-path "$ADDONS_PATH" \
     --aws-profile "$AWS_PROFILE" \
-    --aws-region "$AWS_REGION"
+    --aws-region "$AWS_REGION" \
+    --local-secrets
+T_RENDER=$(( $(now) - _t0 ))
 
 DB_NAME=$(python3 -c "
 import yaml
@@ -95,6 +101,7 @@ print(cfg['http_port'])
 NEED_RESTORE=false
 if [ "$REFRESH" = true ] || [ ! -f "$SNAPSHOT_DIR/db.dump" ]; then
     echo "=== Pulling sanitized snapshot from S3 ==="
+    _t0=$(now)
     mkdir -p "$SNAPSHOT_DIR"
     S3_PREFIX="s3://erp16-sandbox-snapshots/sanitized/${CLIENT_ID}/latest"
     aws s3 cp "$S3_PREFIX/db.dump" "$SNAPSHOT_DIR/db.dump" --profile "$AWS_PROFILE" --region "$AWS_REGION"
@@ -102,6 +109,7 @@ if [ "$REFRESH" = true ] || [ ! -f "$SNAPSHOT_DIR/db.dump" ]; then
     aws s3 cp "$S3_PREFIX/published_at.txt" "$SNAPSHOT_DIR/published_at.txt" --profile "$AWS_PROFILE" --region "$AWS_REGION"
     echo "Snapshot published at: $(cat "$SNAPSHOT_DIR/published_at.txt")"
     NEED_RESTORE=true
+    T_PULL=$(( $(now) - _t0 ))
 fi
 
 if [ "$REFRESH" = true ]; then
@@ -113,6 +121,7 @@ echo "=== Starting $DB_SERVICE ==="
 docker compose -f "$COMPOSE_FILE" up -d "$DB_SERVICE"
 
 echo "=== Waiting for Postgres to be ready ==="
+_t0=$(now)
 for i in $(seq 1 30); do
     if docker compose -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" pg_isready -U odoo >/dev/null 2>&1; then
         break
@@ -120,6 +129,7 @@ for i in $(seq 1 30); do
     [ "$i" -eq 30 ] && fail "Postgres never became ready"
     sleep 1
 done
+T_DB_WAIT=$(( $(now) - _t0 ))
 
 DB_EXISTS=$(docker compose -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" psql -U odoo -d postgres -tAc \
     "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null | tr -d '[:space:]')
@@ -129,14 +139,22 @@ if [ "$NEED_RESTORE" = true ] || [ "$DB_EXISTS" != "1" ]; then
         echo "=== Dropping existing '$DB_NAME' for a fresh restore ==="
         docker compose -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" psql -U odoo -d postgres -c "DROP DATABASE \"$DB_NAME\";"
     fi
+    _t0=$(now)
     echo "=== Creating database '$DB_NAME' ==="
     docker compose -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" psql -U odoo -d postgres -c "CREATE DATABASE \"$DB_NAME\";"
 
     echo "=== Restoring dump into '$DB_NAME' ==="
+    # -j (parallel restore) cut this phase from 61s to 43s on a 4-core
+    # machine restoring orion-internal's 983-table dump (2026-08-05
+    # timing test) -- the single biggest chunk of a cold start, so worth
+    # the one-line change. nproc rather than a hardcoded number since
+    # this runs on whatever a given developer's laptop actually has.
     docker compose -f "$COMPOSE_FILE" cp "$SNAPSHOT_DIR/db.dump" "${DB_SERVICE}:/tmp/db.dump"
-    docker compose -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" pg_restore -U odoo --no-owner --no-privileges -d "$DB_NAME" /tmp/db.dump
+    docker compose -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" pg_restore -j "$(nproc)" -U odoo --no-owner --no-privileges -d "$DB_NAME" /tmp/db.dump
     docker compose -f "$COMPOSE_FILE" exec -T "$DB_SERVICE" rm -f /tmp/db.dump
+    T_DB_RESTORE=$(( $(now) - _t0 ))
 
+    _t0=$(now)
     echo "=== Restoring filestore ==="
     # Extract directly into the named volume via a throwaway helper
     # container bind-mounting both the volume and the local snapshot dir --
@@ -154,6 +172,7 @@ if [ "$NEED_RESTORE" = true ] || [ "$DB_EXISTS" != "1" ]; then
     # extracted tree is root-owned and Odoo can't create sibling dirs
     # (e.g. .local/share/Odoo/sessions) at boot, failing every request
     # with PermissionError even though the container itself starts fine.
+    T_FS_RESTORE=$(( $(now) - _t0 ))
 else
     echo "=== '$DB_NAME' already restored, reusing existing volume ==="
 fi
@@ -163,6 +182,7 @@ echo "=== Starting $WEB_SERVICE ==="
 # rendered compose file) already bakes in py3o.formats/py3o.template --
 # see that file's comment for why. No runtime pip-install/restart needed
 # here anymore; docker compose builds/caches the image automatically.
+_t0=$(now)
 docker compose -f "$COMPOSE_FILE" up -d "$WEB_SERVICE"
 
 echo "=== Waiting for Odoo to finish loading (health-check) ==="
@@ -177,10 +197,21 @@ for i in $(seq 1 90); do
     fi
     sleep 1
 done
+T_WEB_BOOT=$(( $(now) - _t0 ))
 
+T_TOTAL=$(( $(now) - T_SCRIPT_START ))
 echo ""
 echo "=== '$CLIENT_ID' is up ==="
 echo "  URL: http://127.0.0.1:${HTTP_PORT}"
 echo "  DB:  $DB_NAME"
-echo "  Master password: resolved via SSM (/erp16-sandbox/${CLIENT_ID}/master_password)"
+echo "  Master password: local-only (secrets.local.yaml), never touches SSM -- see --local-secrets"
 echo "  Stop with: $0 $CLIENT_ID --down"
+echo ""
+echo "=== Timing breakdown ==="
+echo "  render:          ${T_RENDER}s"
+echo "  S3 pull:         ${T_PULL}s"
+echo "  postgres-ready:  ${T_DB_WAIT}s"
+echo "  db restore:      ${T_DB_RESTORE}s"
+echo "  filestore restore: ${T_FS_RESTORE}s"
+echo "  web boot+health: ${T_WEB_BOOT}s"
+echo "  TOTAL:           ${T_TOTAL}s"

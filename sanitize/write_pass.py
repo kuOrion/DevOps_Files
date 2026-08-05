@@ -129,10 +129,21 @@ def flatten_job_titles(env):
             continue
         Model = env[model_name].with_context(active_test=False)
         recs = Model.search([(fname, '!=', False)])
+        # hr.job.name has a real DB-level unique constraint scoped to
+        # (company_id, department_id) -- flattening every row to the
+        # identical literal string violates it as soon as two job
+        # positions share a department (found live on puna_eye_care,
+        # 2026-08-05; parus_instruments/orion-internal never had this
+        # collision, so it went unnoticed until now). Append the record's
+        # own id to guarantee uniqueness -- reveals nothing real, just a
+        # sequence number, and the other two FLATTEN_FIELDS entries
+        # (hr.employee.job_title, res.partner.function) are plain text
+        # with no such constraint, so they keep the bare literal.
+        unique = model_name == "hr.job"
         for r in recs:
-            r.write({fname: literal})
+            r.write({fname: f"{literal} {r.id}" if unique else literal})
         env.cr.commit()
-        print(f"{model_name}.{fname}: {len(recs)} flattened to '{literal}'")
+        print(f"{model_name}.{fname}: {len(recs)} flattened to '{literal}'" + (" (id-suffixed for uniqueness)" if unique else ""))
 
 
 if __name__ == "__main__":

@@ -1,88 +1,77 @@
 #!/bin/bash
-# Full consolidated sanitization pipeline, remote orchestration.
-# Runs on the sandbox host, drives docker exec into orion_test-web_orion_test-1
-# (which has odoo + the addons image) against whichever client's scratch
-# sanitized DB this run targets.
+# Full consolidated sanitization pipeline, reworked for the per-client
+# isolated-container architecture (2026-08-05) -- see ROADMAP.md's
+# sanitization-rework entries for the full design discussion.
 #
-# set -e is critical here -- a prior run silently continued past a failed
-# CREATE DATABASE (template db still had an open connection) and ran the
-# whole pipeline against a stale, contaminated orm_test without anyone
-# noticing until the log was reviewed after the fact. Never again: any
-# failed step now aborts the whole script immediately and loudly.
+# Runs as erp16-sanitizer (via its narrow sudoers rule for standing up
+# sanitize-db/sanitize-web -- this script itself just needs docker exec
+# access to those two containers, which erp16-sanitizer does NOT have
+# directly either; in practice this is invoked by an orchestrator with
+# broader access, same as erp16-pull-client.sh is invoked by/for
+# erp16-puller rather than run interactively as that user).
+#
+# Never connects to a live client database. Only ever touches:
+#   - sanitize-db / sanitize-web (its own throwaway scratch stack)
+#   - /opt/erp16/raw/<client_id>/ (read-only handoff dump, written
+#     earlier by erp16-pull-client.sh -- this script does not pull)
+#
+# set -e is critical here -- see the original script's comment on the
+# silent-failure incident this guards against. Still true.
 set -euo pipefail
 
 CLIENT_ID="${1:-orion_test}"
 PIPELINE_START=$(date +%s)
 
-# All client DBs on the sandbox share ONE Postgres container/network alias
-# and ONE admin password -- this is the same shared-blast-radius Postgres
-# instance the original incident's design flaw was about, not a per-client
-# secret. Still only defined ONCE here rather than repeated as a literal
-# in every sanitize/*.py script -- see SOURCE_DB/SANITIZED_DB below for the
-# part that actually does vary per client.
-WEB=orion_test-web_orion_test-1
-DBCONT=orion_test-db_orion_test-1
-DBHOST=db_orion_test
-DBPASS='F0aclHkVKiTxFwCHsf6UoS26'
+DBCONT=sanitize-db
+WEB=sanitize-web
+DBHOST=db   # sanitize-web's own HOST env var / compose network alias -- not a shared-instance alias anymore
+RAW_DIR="/opt/erp16/raw/${CLIENT_ID}"
+
+# Read live from the compose file rather than hardcoding -- this
+# container's password is generated fresh per render, unlike the old
+# shared instance's long-lived literal.
+DBPASS=$(grep -oP 'POSTGRES_PASSWORD: \K.*' /opt/erp16/sanitize/docker-compose.yml | head -1)
 
 source "$(dirname "${BASH_SOURCE[0]}")/pipeline_clients.sh"
-SOURCE_DB_NAME=$(resolve_source_db "$CLIENT_ID")
 SANITIZED_DB_NAME=$(resolve_sanitized_db "$CLIENT_ID")
-VIEW_CONTAINER="${SANITIZED_DB_NAME}-web"  # e.g. orm_test-web -- optional, see STEP 6
+# The freshly-restored copy IS the real client data, byte-identical, at
+# the instant right after restore -- before any transform below runs.
+# Safe to read it as "source" for dictionary-building purposes, then
+# transform that same database in place into the sanitized copy. No
+# live source database exists in this container at all; ever.
+SOURCE_DB_NAME="$SANITIZED_DB_NAME"
 
-echo "=== Client: $CLIENT_ID (source db: $SOURCE_DB_NAME, sanitized db: $SANITIZED_DB_NAME) ==="
+echo "=== Client: $CLIENT_ID (sanitized db: $SANITIZED_DB_NAME) ==="
 
-echo "=== STEP 0: stop ALL connections to $SOURCE_DB_NAME (both web containers), drop+recreate $SANITIZED_DB_NAME ==="
-docker stop "$VIEW_CONTAINER" 2>/dev/null || true
-docker stop "$WEB"
-echo "$WEB stopped -- template db now has zero connections"
+echo "=== STEP -1: verify the puller already dropped a fresh pull here ==="
+if [ ! -f "$RAW_DIR/db.dump" ] || [ ! -f "$RAW_DIR/filestore.tar.gz" ]; then
+    echo "FATAL: no pulled data at $RAW_DIR -- run erp16-pull-client.sh $CLIENT_ID first" >&2
+    exit 1
+fi
 
-docker exec "$DBCONT" psql -U odoo -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('${SOURCE_DB_NAME}','${SANITIZED_DB_NAME}') AND pid <> pg_backend_pid();"
+echo "=== STEP 0: refresh the sanitize scripts inside sanitize-web ==="
+# Unlike the old shared container (scripts manually docker cp'd in once,
+# ages ago, and left there), sanitize-web is recreated fresh -- always
+# push the current tree so a stale copy can never silently run.
+docker cp "$(dirname "${BASH_SOURCE[0]}")/." "${WEB}:/tmp/"
+
+echo "=== STEP 0a: drop+recreate $SANITIZED_DB_NAME, restore from the handoff dump ==="
+docker exec "$DBCONT" psql -U odoo -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${SANITIZED_DB_NAME}' AND pid <> pg_backend_pid();" || true
 docker exec "$DBCONT" psql -U odoo -d postgres -c "DROP DATABASE IF EXISTS \"${SANITIZED_DB_NAME}\";"
-docker exec "$DBCONT" psql -U odoo -d postgres -c "CREATE DATABASE \"${SANITIZED_DB_NAME}\" TEMPLATE \"${SOURCE_DB_NAME}\";"
-echo "=== $SANITIZED_DB_NAME recreated fresh from $SOURCE_DB_NAME template ==="
+docker exec "$DBCONT" psql -U odoo -d postgres -c "CREATE DATABASE \"${SANITIZED_DB_NAME}\" OWNER odoo;"
+docker cp "$RAW_DIR/db.dump" "${DBCONT}:/tmp/${CLIENT_ID}_pull.dump"
+docker exec "$DBCONT" pg_restore -U odoo -d "${SANITIZED_DB_NAME}" --no-owner --no-acl "/tmp/${CLIENT_ID}_pull.dump"
+docker exec "$DBCONT" rm -f "/tmp/${CLIENT_ID}_pull.dump"
+echo "=== $SANITIZED_DB_NAME restored fresh from this run's pull ==="
 
-echo "=== STEP 0b: restart $WEB, wait until ready ==="
-docker start "$WEB"
-for i in $(seq 1 30); do
-    if docker exec "$WEB" python3 -c "import psycopg2; psycopg2.connect(host='$DBHOST', dbname='${SOURCE_DB_NAME}', user='odoo', password='$DBPASS').close()" 2>/dev/null; then
-        echo "web container DB connectivity confirmed after ${i}s"
-        break
-    fi
-    sleep 1
-    if [ "$i" -eq 30 ]; then
-        echo "FATAL: web container never became ready" >&2
-        exit 1
-    fi
-done
+echo "=== STEP 0b: restore filestore into sanitize-web, under the sanitized db name ==="
+docker exec "$WEB" mkdir -p "/var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME}"
+docker cp "$RAW_DIR/filestore.tar.gz" "${WEB}:/tmp/${CLIENT_ID}_filestore.tar.gz"
+docker exec -u root "$WEB" tar -xzf "/tmp/${CLIENT_ID}_filestore.tar.gz" -C "/var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME}"
+docker exec -u root "$WEB" rm -f "/tmp/${CLIENT_ID}_filestore.tar.gz"
+docker exec -u root "$WEB" chown -R odoo:odoo "/var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME}"
 
-echo "=== STEP 0f: sync filestore ($SOURCE_DB_NAME -> $SANITIZED_DB_NAME) ==="
-# CREATE DATABASE ... TEMPLATE only clones Postgres rows -- the filestore
-# is separate files on disk, never touched by that. Without this step,
-# SANITIZED_DB_NAME's filestore silently drifts stale relative to the real
-# source (new attachments, new cached asset bundles) with nothing to catch
-# it -- found via the exact same bug class in dev-start.sh's snapshot
-# restore. Additive only (never deletes) so the sanitized copy's own
-# placeholder files (written by rule_attachment.py) are never touched.
-docker exec "$WEB" python3 -c "
-import os, shutil
-src = '/var/lib/odoo/.local/share/Odoo/filestore/${SOURCE_DB_NAME}'
-dst = '/var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME}'
-os.makedirs(dst, exist_ok=True)
-copied = 0
-for root, dirs, files in os.walk(src):
-    rel = os.path.relpath(root, src)
-    dst_dir = os.path.join(dst, rel) if rel != '.' else dst
-    os.makedirs(dst_dir, exist_ok=True)
-    for f in files:
-        s, d = os.path.join(root, f), os.path.join(dst_dir, f)
-        if not os.path.exists(d):
-            shutil.copy2(s, d)
-            copied += 1
-print(f'filestore sync: {copied} new file(s) copied from ${SOURCE_DB_NAME} to ${SANITIZED_DB_NAME}')
-"
-
-echo "=== STEP 0c: build_pii_dictionary.py (dump real values from $SOURCE_DB_NAME) ==="
+echo "=== STEP 0c: build_pii_dictionary.py (real values, read before any transform) ==="
 docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SOURCE_DB_NAME="$SOURCE_DB_NAME" \
     "$WEB" python3 -u /tmp/build_pii_dictionary.py
 
@@ -93,7 +82,7 @@ echo "=== STEP 0e: build_value_mapping.py (deterministic value -> transformed ma
 docker exec -e PYTHONUNBUFFERED=1 -e SOURCE_DB_NAME="$SOURCE_DB_NAME" "$WEB" python3 -u /tmp/build_value_mapping.py
 
 echo "=== STEP 1: write_pass.py (canonical field transforms + job title flattening) ==="
-docker exec -e PYTHONUNBUFFERED=1 -e SOURCE_DB_NAME="$SOURCE_DB_NAME" -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < /tmp/write_pass.py
+docker exec -e PYTHONUNBUFFERED=1 -e SOURCE_DB_NAME="$SOURCE_DB_NAME" -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < "$(dirname "${BASH_SOURCE[0]}")/write_pass.py"
 
 echo "=== STEP 1b: reset admin login+password to a known dev value (technical account, not personal data) ==="
 docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http <<'EOF'
@@ -111,19 +100,21 @@ echo "=== STEP 3: chatter_bulk.py (flat placeholder + exact-match bulk fields) =
 docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" -e SOURCE_DB_NAME="$SOURCE_DB_NAME" \
     "$WEB" python3 -u /tmp/chatter_bulk.py
 
-echo "=== STEP 4: substring_hunt_scan.py (full-db verification + auto-fix, fixed qualification rule) ==="
+echo "=== STEP 4: substring_hunt_scan.py (full-db verification + auto-fix) ==="
 docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" -e SOURCE_DB_NAME="$SOURCE_DB_NAME" \
     "$WEB" python3 -u /tmp/substring_hunt_scan.py
 
 echo "=== STEP 5: rule_attachment.py (ir.attachment placeholder content) ==="
-docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < /tmp/rule_attachment.py
+docker exec -e PYTHONUNBUFFERED=1 -i "$WEB" odoo shell -d "$SANITIZED_DB_NAME" --db_host "$DBHOST" --db_user odoo --db_password "$DBPASS" --no-http < "$(dirname "${BASH_SOURCE[0]}")/rule_attachment.py"
 
 echo "=== STEP 5b: rotate_app_secrets.py (database.secret rotation, ir_mail_server credential blanking) ==="
 docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" \
     "$WEB" python3 -u /tmp/rotate_app_secrets.py
 
-echo "=== STEP 6: restart $VIEW_CONTAINER (if it exists -- optional viewing container, not required for sanitization itself) ==="
-docker start "$VIEW_CONTAINER" 2>/dev/null || echo "no $VIEW_CONTAINER container to restart (fine -- create one separately to browse this client's result)"
+echo "=== STEP 6: cleanup -- intermediate CSVs + this run's handoff dump/filestore ==="
+docker exec "$WEB" rm -f "/tmp/pii_"*"_${SOURCE_DB_NAME}.csv" "/tmp/substring_hunt_hits_${SOURCE_DB_NAME}.csv" 2>/dev/null || true
+rm -f "$RAW_DIR/db.dump" "$RAW_DIR/filestore.tar.gz"
+echo "handoff dump/filestore for $CLIENT_ID removed -- next run needs a fresh erp16-pull-client.sh pull"
 
 PIPELINE_END=$(date +%s)
 echo "=== PIPELINE COMPLETE in $((PIPELINE_END - PIPELINE_START))s ==="

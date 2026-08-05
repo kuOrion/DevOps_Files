@@ -284,6 +284,29 @@ EXCLUDE_DESTINATIONS = {
     ("sh_product_variant_spec_line", "sh_value"),
     ("stock_location", "barcode"),              # internal warehouse code
     ("stock_lot", "name"),                      # lot/batch number
+    # found via puna_eye_care (2026-08-05) -- the event_sale/survey/hr_holidays
+    # modules bring Odoo's own stock demo dataset along (demo events, demo
+    # survey questions, demo leave records), all create_uid=1, coincidentally
+    # matching real dictionary values from puna_eye_care's actual data
+    # elsewhere ("Ron Gibson", "Mitchell Admin", city names in demo survey
+    # answers, etc.) -- same shape as account_analytic_account.name above,
+    # not a real leak. CAVEAT (same one that entry already carries): this is
+    # a blanket table+column exclusion, not conditioned on create_uid -- if
+    # this client ever has REAL non-demo records in these fields (a real
+    # event, a real employee's real leave request, a real survey response),
+    # this exclusion would silently cover those too. Confirmed 100% of rows
+    # were create_uid=1 at the time this was added; revisit if that changes.
+    ("event_event", "name"),
+    ("event_registration", "email"),
+    ("event_registration", "name"),
+    ("event_registration", "phone"),
+    ("event_sale_report", "event_registration_name"),
+    ("hr_leave_allocation", "private_name"),
+    ("hr_leave_report", "name"),
+    ("resource_calendar_leaves", "name"),
+    ("survey_question", "title"),
+    ("survey_question_answer", "value"),
+    ("survey_user_input_line", "value_char_box"),
 }
 
 EXCLUDE_TABLES_PREFIX = ("ir_", "base_import_")  # framework/technical, not business data
