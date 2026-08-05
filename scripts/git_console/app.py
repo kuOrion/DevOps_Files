@@ -29,6 +29,7 @@ if it's ever hit unhandled is silent data loss, so it's handled for real.
 Run: python3 scripts/git_console/app.py
 Then open http://127.0.0.1:5151
 """
+import difflib
 import os
 import subprocess
 import threading
@@ -181,6 +182,17 @@ def api_stop(client_id):
     return jsonify({"ok": True, "committed": committed})
 
 
+@app.route("/api/save-changes", methods=["POST"])
+def api_save_changes():
+    """A lightweight checkpoint -- local commit only, generic message, same
+    safety net Stop already uses. No description needed; this isn't
+    Send for Review, it's just 'don't lose this.'"""
+    committed = _auto_commit_if_dirty("manual save")
+    if not committed:
+        return jsonify({"error": "Nothing to save."}), 400
+    return jsonify({"ok": True})
+
+
 @app.route("/api/job/<client_id>")
 def api_job(client_id):
     with _jobs_lock:
@@ -244,10 +256,97 @@ def api_git_status():
     return jsonify({"repo": os.path.basename(ADDONS_DIR), "files": files})
 
 
+CONTEXT_LINES = 3
+
+
+def _file_lines(path, ref=None):
+    """File content as a list of lines, either from the working tree
+    (ref=None) or a git ref (e.g. 'HEAD'). Empty list if the file doesn't
+    exist there -- covers new/deleted files without a special case."""
+    if ref:
+        result = _git(["show", f"{ref}:{path}"])
+        return result.stdout.splitlines() if result.returncode == 0 else []
+    full = os.path.join(ADDONS_DIR, path)
+    if not os.path.isfile(full):
+        return []
+    with open(full, errors="replace") as f:
+        return f.read().splitlines()
+
+
+def _word_spans(old_line, new_line):
+    """Character-level diff of one line pair -- returns (old_spans,
+    new_spans), each a list of [text, changed] pairs, so the frontend can
+    highlight just the substring that actually changed (e.g. a version
+    bump '16.0.1.2' -> '16.0.1.3') instead of marking the whole line."""
+    sm = difflib.SequenceMatcher(None, old_line, new_line)
+    old_spans, new_spans = [], []
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            old_spans.append([old_line[i1:i2], False])
+            new_spans.append([new_line[j1:j2], False])
+        else:
+            if i1 != i2:
+                old_spans.append([old_line[i1:i2], True])
+            if j1 != j2:
+                new_spans.append([new_line[j1:j2], True])
+    return old_spans, new_spans
+
+
+def _file_diff_hunks(path, status_code):
+    is_new = "A" in status_code or "?" in status_code
+    is_deleted = "D" in status_code
+    old_lines = [] if is_new else _file_lines(path, "HEAD")
+    new_lines = [] if is_deleted else _file_lines(path)
+
+    hunks = []
+    ops = difflib.SequenceMatcher(None, old_lines, new_lines).get_opcodes()
+    for idx, (op, i1, i2, j1, j2) in enumerate(ops):
+        if op == "equal":
+            lines = old_lines[i1:i2]
+            at_start, at_end = idx == 0, idx == len(ops) - 1
+            head = [] if at_start else lines[:CONTEXT_LINES]
+            tail = [] if at_end else lines[-CONTEXT_LINES:]
+            hidden = len(lines) - len(head) - len(tail)
+            for l in head:
+                hunks.append({"type": "context", "text": l})
+            if hidden > 0:
+                hunks.append({"type": "skip", "count": hidden})
+            for l in (tail if hidden > 0 else lines[len(head):]):
+                hunks.append({"type": "context", "text": l})
+        elif op == "delete":
+            for l in old_lines[i1:i2]:
+                hunks.append({"type": "del", "spans": [[l, False]]})
+        elif op == "insert":
+            for l in new_lines[j1:j2]:
+                hunks.append({"type": "add", "spans": [[l, False]]})
+        elif op == "replace":
+            old_block, new_block = old_lines[i1:i2], new_lines[j1:j2]
+            # Word-level highlight only makes sense line-for-line -- an
+            # asymmetric block (e.g. 1 line replaced by 5) falls back to
+            # plain whole-line del/add, same as a normal diff would show.
+            if len(old_block) == len(new_block) and len(old_block) <= 5:
+                for ol, nl in zip(old_block, new_block):
+                    old_spans, new_spans = _word_spans(ol, nl)
+                    hunks.append({"type": "del", "spans": old_spans})
+                    hunks.append({"type": "add", "spans": new_spans})
+            else:
+                for l in old_block:
+                    hunks.append({"type": "del", "spans": [[l, False]]})
+                for l in new_block:
+                    hunks.append({"type": "add", "spans": [[l, False]]})
+    return hunks
+
+
 @app.route("/api/git/diff")
 def api_git_diff():
-    diff = _git(["diff", "HEAD"])
-    return jsonify({"diff": diff.stdout})
+    status = _git(["status", "--porcelain"])
+    files = []
+    for line in status.stdout.splitlines():
+        if not line.strip():
+            continue
+        code, path = line[:2].strip(), line[3:]
+        files.append({"path": path, "hunks": _file_diff_hunks(path, code)})
+    return jsonify({"files": files})
 
 
 @app.route("/api/send-for-review", methods=["POST"])

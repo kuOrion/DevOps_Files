@@ -8,9 +8,10 @@
     --bg: #fbfbfa; --surface: #f2f1ee; --card: #ffffff;
     --border: #e5e3de; --text: #1a1a18; --text-secondary: #52514c; --text-muted: #726f68;
     --success-bg: #eaf3de; --success-text: #27500a;
+    --danger-bg: #f6e6e6; --danger-text: #a32d2d;
     --warning-bg: #faeeda; --warning-text: #854f0b;
     --accent: #185fa5; --accent-bg: #185fa5; --accent-contrast: #ffffff;
-    --danger: #a32d2d; --danger-bg: #f6e6e6;
+    --danger: #a32d2d;
     --shadow: 0 1px 2px rgba(20,20,15,0.05), 0 1px 8px rgba(20,20,15,0.03);
   }
   @media (prefers-color-scheme: dark) {
@@ -18,9 +19,10 @@
       --bg: #171715; --surface: #232320; --card: #211f1d;
       --border: #37352f; --text: #f0efec; --text-secondary: #cbc9c0; --text-muted: #a3a099;
       --success-bg: #173404; --success-text: #c0dd97;
+      --danger-bg: #3a2020; --danger-text: #f09595;
       --warning-bg: #412402; --warning-text: #fac775;
       --accent: #85b7eb; --accent-bg: #2f6fb0; --accent-contrast: #ffffff;
-      --danger: #f09595; --danger-bg: #3a2020;
+      --danger: #f09595;
       --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 2px 12px rgba(0,0,0,0.18);
     }
   }
@@ -62,11 +64,12 @@
   .badge.warn { background: var(--warning-bg); color: var(--warning-text); }
   .meta { font-size: 16px; color: var(--text-secondary); line-height: 1.9; }
 
-  .btn-row { display: flex; gap: 8px; margin-top: 14px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   button {
     flex: 1; font: inherit; font-size: 15.5px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
     border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer;
     transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+    min-width: 140px;
   }
   button:hover:not(:disabled) { background: var(--surface); }
   button:active:not(:disabled) { transform: translateY(0.5px); }
@@ -95,18 +98,36 @@
     max-height: 100px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px;
     background: var(--surface); border-radius: 6px; padding: 6px 8px;
   }
-  .diff-view {
-    font-family: ui-monospace, monospace; font-size: 14px; background: var(--surface); border-radius: 8px;
-    padding: 0.75rem 1rem; max-height: 320px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 10px;
+
+  .diff-view { margin-bottom: 10px; }
+  .diff-file {
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px;
   }
-  .diff-add { color: #3a7a13; } .diff-del { color: var(--danger); } .diff-hunk { color: var(--accent); }
+  .diff-file-name {
+    padding: 8px 14px; font-size: 14px; font-weight: 600; background: var(--surface);
+    border-bottom: 1px solid var(--border); font-family: ui-monospace, monospace;
+  }
+  .diff-line {
+    font-family: ui-monospace, monospace; font-size: 13.5px; padding: 1px 14px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .diff-line.context { color: var(--text-secondary); }
+  .diff-line.add { background: var(--success-bg); color: var(--success-text); }
+  .diff-line.del { background: var(--danger-bg); color: var(--danger-text); }
+  .diff-line.skip { color: var(--text-muted); font-style: italic; padding-top: 4px; padding-bottom: 4px; }
+  .diff-span-changed.add { background: rgba(99,153,34,0.3); border-radius: 2px; font-weight: 600; }
+  .diff-span-changed.del { background: rgba(226,75,74,0.3); border-radius: 2px; text-decoration: line-through; }
 
   .commit-hash { color: var(--text-muted); font-family: ui-monospace, monospace; font-size: 13.5px; }
 
-  .changes-sends-row { display: grid; grid-template-columns: minmax(300px, 460px) 1fr; gap: 14px; align-items: start; }
-  @media (max-width: 720px) { .changes-sends-row { grid-template-columns: 1fr; } }
-
-  .sends-card { padding-top: 1rem; padding-bottom: 0.6rem; max-height: 560px; overflow-y: auto; }
+  .sends-toggle {
+    display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); margin: 2.25rem 0 10px;
+  }
+  .sends-toggle .chev { transition: transform 0.15s ease; font-size: 11px; }
+  .sends-toggle.open .chev { transform: rotate(90deg); }
+  .sends-card { padding-top: 1rem; padding-bottom: 0.6rem; max-height: 420px; overflow-y: auto; }
   .send-row { display: flex; gap: 10px; padding: 8px 0; }
   .avatar {
     width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -137,42 +158,41 @@
   <div class="section-label">Clients / Containers</div>
   <div class="grid" id="clients-grid"></div>
 
-  <div class="changes-sends-row" style="margin-top: 2.25rem;">
-    <div>
-      <div class="section-label" style="margin-top:0;">Changes</div>
-      <div class="card" id="changes-card">
-        <div id="changes-idle-view" class="changes-idle" style="display:none;">
-          <p>No changes yet in <span id="repo-name-idle" style="font-weight:600;"></span>.</p>
-        </div>
+  <div class="section-label">Changes</div>
+  <div class="card" id="changes-card">
+    <div id="changes-idle-view" class="changes-idle" style="display:none;">
+      <p>No changes yet in <span id="repo-name-idle" style="font-weight:600;"></span>.</p>
+    </div>
 
-        <div id="changes-active-view" style="display:none;">
-          <div class="card-title-row">
-            <span style="font-weight:600; font-size:16px;" id="repo-name-active"></span>
-            <span class="badge warn" id="changes-badge"></span>
-          </div>
-          <div id="git-files"></div>
+    <div id="changes-active-view" style="display:none;">
+      <div class="card-title-row">
+        <span style="font-weight:600; font-size:16px;" id="repo-name-active"></span>
+        <span class="badge warn" id="changes-badge"></span>
+      </div>
+      <div id="git-files"></div>
 
-          <div class="divider">
-            <div id="diff-view" class="diff-view" style="display:none;"></div>
-            <input type="text" id="send-msg" placeholder="What did you change? (required)">
-            <div class="btn-row">
-              <button onclick="toggleDiff()" id="diff-toggle-btn">Review diff</button>
-              <button class="primary" onclick="sendForReview()">Send for Review</button>
-            </div>
-          </div>
+      <div class="divider">
+        <div id="diff-view" class="diff-view" style="display:none;"></div>
+        <input type="text" id="send-msg" placeholder="Please describe changes" style="display:none;">
+        <div class="btn-row">
+          <button onclick="saveChanges()">Save Changes</button>
+          <button onclick="toggleDiff()" id="diff-toggle-btn">Review changes</button>
+          <button class="primary" onclick="sendForReview()" id="send-btn">Send for Review</button>
         </div>
       </div>
     </div>
-
-    <div>
-      <div class="section-label" style="margin-top:0;">Recent Sends</div>
-      <div class="card sends-card" id="sends-card"></div>
-    </div>
   </div>
+
+  <div class="sends-toggle" id="sends-toggle" onclick="toggleSends()">
+    <span class="chev">&#9656;</span> Recent Sends
+  </div>
+  <div class="card sends-card" id="sends-card" style="display:none;"></div>
 </div>
 
 <script>
 let lastStatus = null;
+let sendsOpen = false;
+let sendsLoaded = false;
 
 async function refreshClients() {
   const res = await fetch('/api/clients');
@@ -266,47 +286,89 @@ async function refreshChanges() {
   }).join('');
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+}
+
+function renderSpans(spans, kind) {
+  return spans.map(([text, changed]) => {
+    const escaped = escapeHtml(text) || ' ';
+    return changed ? `<span class="diff-span-changed ${kind}">${escaped}</span>` : escaped;
+  }).join('');
+}
+
+function renderHunks(hunks) {
+  return hunks.map(h => {
+    if (h.type === 'skip') return `<div class="diff-line skip">&hellip; ${h.count} unchanged line${h.count === 1 ? '' : 's'} &hellip;</div>`;
+    if (h.type === 'context') return `<div class="diff-line context">${escapeHtml(h.text) || '&nbsp;'}</div>`;
+    if (h.type === 'add') return `<div class="diff-line add">+ ${renderSpans(h.spans, 'add')}</div>`;
+    if (h.type === 'del') return `<div class="diff-line del">- ${renderSpans(h.spans, 'del')}</div>`;
+    return '';
+  }).join('');
+}
+
 async function toggleDiff() {
   const view = document.getElementById('diff-view');
   const btn = document.getElementById('diff-toggle-btn');
   if (view.style.display === 'block') {
     view.style.display = 'none';
-    btn.textContent = 'Review diff';
+    btn.textContent = 'Review changes';
     return;
   }
   const res = await fetch('/api/git/diff');
   const data = await res.json();
-  const html = data.diff.split('\n').map(line => {
-    let cls = '';
-    if (line.startsWith('+') && !line.startsWith('+++')) cls = 'diff-add';
-    else if (line.startsWith('-') && !line.startsWith('---')) cls = 'diff-del';
-    else if (line.startsWith('@@')) cls = 'diff-hunk';
-    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    return cls ? `<span class="${cls}">${escaped}</span>` : escaped;
-  }).join('\n');
-  view.innerHTML = html || 'No diff';
+  view.innerHTML = data.files.map(f => `
+    <div class="diff-file">
+      <div class="diff-file-name">${f.path}</div>
+      ${renderHunks(f.hunks)}
+    </div>`).join('') || 'No changes';
   view.style.display = 'block';
-  btn.textContent = 'Hide diff';
+  btn.textContent = 'Hide changes';
+}
+
+async function saveChanges() {
+  const res = await fetch('/api/save-changes', {method: 'POST'});
+  if (res.ok) {
+    refreshChanges();
+    const diffBtn = document.getElementById('diff-toggle-btn');
+    if (diffBtn.textContent === 'Hide changes') { diffBtn.click(); }
+  } else {
+    const err = await res.json();
+    alert(err.error || 'Nothing to save.');
+  }
 }
 
 async function sendForReview() {
-  const message = document.getElementById('send-msg').value.trim();
-  if (!message) { alert('Describe what changed first -- a few words is enough.'); return; }
+  const box = document.getElementById('send-msg');
+  if (box.style.display !== 'block') {
+    box.style.display = 'block';
+    box.focus();
+    return;
+  }
+  const message = box.value.trim();
+  if (!message) { alert('Please describe changes first -- a few words is enough.'); return; }
   const res = await fetch('/api/send-for-review', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({message}),
   });
   if (res.ok) {
-    document.getElementById('send-msg').value = '';
+    box.value = '';
+    box.style.display = 'none';
     document.getElementById('diff-view').style.display = 'none';
-    document.getElementById('diff-toggle-btn').textContent = 'Review diff';
+    document.getElementById('diff-toggle-btn').textContent = 'Review changes';
     refreshChanges();
-    refreshSends();
+    if (sendsOpen) refreshSends();
   } else {
     const err = await res.json();
     alert(err.error || 'Could not send for review.');
   }
 }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'send-msg') {
+    sendForReview();
+  }
+});
 
 function avatarColor(name) {
   let hash = 0;
@@ -336,6 +398,13 @@ async function refreshSends() {
     </div>`).join('');
 }
 
+function toggleSends() {
+  sendsOpen = !sendsOpen;
+  document.getElementById('sends-toggle').classList.toggle('open', sendsOpen);
+  document.getElementById('sends-card').style.display = sendsOpen ? 'block' : 'none';
+  if (sendsOpen && !sendsLoaded) { sendsLoaded = true; refreshSends(); }
+}
+
 async function refreshDockerStatus() {
   try {
     await fetch('/api/clients');
@@ -351,7 +420,7 @@ function refreshAll() {
   refreshDockerStatus();
   refreshClients();
   refreshChanges();
-  refreshSends();
+  if (sendsOpen) refreshSends();
 }
 
 refreshAll();
