@@ -16,6 +16,14 @@ services:
     volumes:
       - odoo-db-data:/var/lib/postgresql/data
     restart: unless-stopped
+    # log_connections/log_disconnections are off by default -- without
+    # them Postgres only ever logs FATAL/ERROR-level events (crashes,
+    # syntax errors), never a real auth failure or a connection's actual
+    # source, which is the entire security gap the postgres/ logging
+    # source exists to close (docs/ROADMAP.md, 2026-08-06 logging design).
+    # Passed as a command-line override, not baked into the image, so it
+    # applies uniformly to every client without a per-image rebuild.
+    command: ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on"]
 
   web:
     build:

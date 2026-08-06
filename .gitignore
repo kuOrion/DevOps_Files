@@ -21,8 +21,7 @@ sanitize/reports/pii_dictionary_substring_hunt.csv
 sanitize/reports/pii_value_mapping.csv
 
 # Python bytecode cache
-sanitize/__pycache__/
-scripts/dev_console/__pycache__/
+__pycache__/
 
 # OS/editor
 .DS_Store
