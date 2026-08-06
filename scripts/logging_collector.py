@@ -35,9 +35,19 @@ hideout-file paths, an allowlist of expected process-per-container-role,
 host-wide execution-from-writable-dir, unrecognized container names, and
 a systemd running-unit allowlist.
 
-Docker/Odoo are "routine" in the audit/routine split -- aged out after
-RETENTION_DAYS. SSH, model-audit, and system-audit are audit -- kept
-forever, never pruned.
+HAProxy thread: tails /var/log/haproxy.log (the Ubuntu haproxy package's
+own rsyslog rule already captures it -- the original documented gap was
+that nothing ever read it, not that the logging needed building) for
+every routed request: client, status, timers, request line. HAProxy
+itself routes by pseudo-domain (<client>.erp16-sandbox.test, tunnel-only,
+never a real domain or public port) to each client's already-published
+127.0.0.1:<http_port> backend -- same routing/logging mechanism a real
+erp16.orion-instruments.io HAProxy would use, reusable at cutover with
+nothing more than a domain-string swap.
+
+Docker/Odoo/HAProxy are "routine" in the audit/routine split -- aged out
+after RETENTION_DAYS. SSH, model-audit, and system-audit are audit --
+kept forever, never pruned.
 """
 import json
 import os
@@ -607,6 +617,109 @@ def ssh_tail_worker():
 
 
 # ---------------------------------------------------------------------------
+# HAProxy access logs (routine -- aged out after RETENTION_DAYS, per the
+# original 2026-08-06 logging design's own source table, unlike SSH/
+# model-audit/system-audit/postgres which are audit-forever)
+#
+# Closes the long-standing documented gap from the original June security
+# audit (CLAUDE.md's TODO list, never closed until now): "Fix HAProxy
+# access logging (syslog local0, nothing captures it)". Turns out the
+# Ubuntu haproxy package already ships a working rsyslog rule
+# (/etc/rsyslog.d/49-haproxy.conf, installed automatically) that captures
+# everything to /var/log/haproxy.log -- the actual gap was that nothing
+# ever *read* that file, not that the logging itself needed building.
+#
+# Same syslog wrapper format as auth.log (confirmed live, 2026-08-06),
+# so this reuses _SYSLOG_LINE_RE/_HOST_TZ/_MONTHS from the SSH section
+# rather than re-deriving them. HAProxy's own embedded accept_date inside
+# the message (millisecond precision) is used for `ts`, not the outer
+# syslog wrapper's second-precision timestamp.
+# ---------------------------------------------------------------------------
+
+HAPROXY_LOG = "/var/log/haproxy.log"
+
+# HAProxy's default `httplog` format (global `option httplog` in
+# haproxy.cfg): client_ip:port [accept_date] frontend backend/server
+# Tq/Tw/Tc/Tr/Tt status bytes req_cookie resp_cookie term_state
+# actconn/feconn/beconn/srvconn/retries srv_queue/backend_queue "request"
+_HAPROXY_HTTPLOG_RE = re.compile(
+    r'^(?P<client_ip>\S+):(?P<client_port>\d+) '
+    r'\[(?P<accept_date>[^\]]+)\] '
+    r'(?P<frontend>\S+) (?P<backend>\S+)/(?P<server>\S+) '
+    r'(?P<tq>-?\d+)/(?P<tw>-?\d+)/(?P<tc>-?\d+)/(?P<tr>-?\d+)/(?P<tt>\+?-?\d+) '
+    r'(?P<status>\d+) (?P<bytes>\d+) \S+ \S+ (?P<term_state>\S+) '
+    r'\d+/\d+/\d+/\d+/\+?\d+ \d+/\d+ '
+    r'"(?P<request>[^"]*)"$'
+)
+
+
+def _haproxy_ts_to_iso(accept_date):
+    # "06/Aug/2026:14:59:09.016" (host-local IST, confirmed live) -> UTC ISO8601
+    dt = datetime.strptime(accept_date, "%d/%b/%Y:%H:%M:%S.%f").replace(tzinfo=_HOST_TZ)
+    dt = dt.astimezone(timezone.utc)
+    milliseconds = dt.microsecond // 1000
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{milliseconds:03d}Z"
+
+
+def _haproxy_level(status):
+    if status >= 500:
+        return "error"
+    if status >= 400:
+        return "warning"
+    return "info"
+
+
+def _parse_haproxy_line(line):
+    m = _SYSLOG_LINE_RE.match(line)
+    if not m or m.group("proc") != "haproxy":
+        return None
+    hm = _HAPROXY_HTTPLOG_RE.match(m.group("msg"))
+    if not hm:
+        return None  # haproxy's own [WARNING]/[NOTICE] process-lifecycle lines, not a request
+    status = int(hm.group("status"))
+    # backend name is "be_<client>" by this config's own naming convention
+    # (templates section above) -- "be_unrecognized" for a request whose
+    # Host header didn't match any known pseudo-domain, which has no
+    # `client` to report.
+    backend = hm.group("backend")
+    client = backend[len("be_"):] if backend != "be_unrecognized" else None
+    return {
+        "ts": _haproxy_ts_to_iso(hm.group("accept_date")),
+        "level": _haproxy_level(status),
+        "client": client,
+        "client_ip": hm.group("client_ip"),
+        "status": status,
+        "bytes": int(hm.group("bytes")),
+        "term_state": hm.group("term_state"),
+        "request": hm.group("request"),
+    }
+
+
+def haproxy_tail_worker():
+    while not _stop.is_set():
+        try:
+            proc = subprocess.Popen(
+                ["tail", "-F", "-n", "0", HAPROXY_LOG],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            for line in proc.stdout:
+                if _stop.is_set():
+                    break
+                entry = _parse_haproxy_line(line.rstrip("\n"))
+                if entry:
+                    write_entry("haproxy", entry)
+            proc.terminate()
+        except FileNotFoundError:
+            time.sleep(5)
+        except Exception:
+            pass
+        if not _stop.is_set():
+            time.sleep(2)
+
+
+# ---------------------------------------------------------------------------
 # Model-level audit (audit -- kept forever, never pruned)
 #
 # Reuses migrate_client_to_live.sh's infection-pass queries, run
@@ -997,7 +1110,7 @@ def system_audit_loop():
 # and system_audit/ are audit, kept forever)
 # ---------------------------------------------------------------------------
 
-_ROUTINE_SOURCES = ("docker", "odoo")
+_ROUTINE_SOURCES = ("docker", "odoo", "haproxy")
 
 
 def prune_loop():
@@ -1029,6 +1142,7 @@ def main():
         threading.Thread(target=odoo_rescan_loop, daemon=True),
         threading.Thread(target=postgres_rescan_loop, daemon=True),
         threading.Thread(target=ssh_tail_worker, daemon=True),
+        threading.Thread(target=haproxy_tail_worker, daemon=True),
         threading.Thread(target=model_audit_loop, daemon=True),
         threading.Thread(target=system_audit_loop, daemon=True),
         threading.Thread(target=prune_loop, daemon=True),
