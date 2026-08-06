@@ -57,6 +57,12 @@
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 1.4rem 1.6rem; box-shadow: var(--shadow);
   }
+  /* Only cards inside the auto-fit clients grid get capped -- with few
+     cards, 1fr stretches each one to fill the row, which looks comically
+     wide with just one or two running clients. Other .card uses
+     (Changes, diff detail, Recent Sends) have their own explicit sizing
+     and shouldn't be capped the same way. */
+  .grid > .card { max-width: 340px; }
   .card-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
   .card-title { font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
   .badge { font-size: 13.5px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
