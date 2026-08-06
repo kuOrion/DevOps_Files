@@ -22,8 +22,48 @@ BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLIENTS_YAML="$BUILD_DIR/clients.yaml"
 LIVE_WORKTREE="$HOME/Live_copy_of_Addons"
 BACKUPS_DIR="$HOME/Backups"
+DEPLOY_LOG_DIR="/opt/erp16/logs/deploy"
 
 fail() { echo "ERROR: $1" >&2; exit 1; }
+
+# Deploy history -- part of the logging/audit design (docs/ROADMAP.md,
+# 2026-08-06): dense JSONL, one file per day, UTC timestamps throughout so
+# this correlates against every other log source by plain string sort.
+# Audit-bucket source (kept forever, unlike routine logs) -- deploy events
+# are inherently low-volume and this is the only durable record that a
+# deploy happened at all, since deploy.sh previously only ever printed to
+# stdout and nothing persisted after the terminal closed.
+write_deploy_log() {
+    local result="$1" target="$2" previous="$3" clients="$4" failed="$5" duration="$6"
+    mkdir -p "$DEPLOY_LOG_DIR"
+    local logfile="$DEPLOY_LOG_DIR/$(date -u +%Y-%m-%d).jsonl"
+    # Environment variables, not string-interpolated into the python
+    # source -- list_cloud_clients() returns one client per line, and
+    # $clients/$failed carry those raw newlines. Interpolating that
+    # straight into a single-quoted Python string literal breaks the
+    # instant it contains more than one client (found live, 2026-08-06):
+    # the shell substitutes the newline in place, and Python can't parse
+    # a raw newline inside '...'. Env vars sidestep this whole class of
+    # bug regardless of what characters end up in any of these values.
+    DEPLOY_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    DEPLOY_RESULT="$result" DEPLOY_TARGET="$target" DEPLOY_PREVIOUS="$previous" \
+    DEPLOY_CLIENTS="$clients" DEPLOY_FAILED="$failed" DEPLOY_DURATION="$duration" \
+    python3 -c "
+import json, os
+entry = {
+    'ts': os.environ['DEPLOY_TS'],
+    'source': 'deploy',
+    'level': 'audit',
+    'result': os.environ['DEPLOY_RESULT'],
+    'target_commit': os.environ['DEPLOY_TARGET'],
+    'previous_commit': os.environ['DEPLOY_PREVIOUS'],
+    'clients': os.environ['DEPLOY_CLIENTS'].split(),
+    'failed_clients': os.environ['DEPLOY_FAILED'].split(),
+    'duration_seconds': int(os.environ['DEPLOY_DURATION']),
+}
+print(json.dumps(entry))
+" >> "$logfile"
+}
 
 # Real deployable cloud clients only -- clients.yaml has no field that
 # actually distinguishes these from the sanitize/staging working areas
@@ -235,6 +275,7 @@ rollback_client() {
 # without reverting everyone's) -> print a summary either way.
 full_deploy() {
     local target="$1"
+    local start_ts; start_ts=$(date +%s)
     local clients; clients=$(list_cloud_clients)
     [ -n "$clients" ] || fail "no cloud clients found in $CLIENTS_YAML"
 
@@ -268,6 +309,7 @@ full_deploy() {
 
     if [ -z "$failed" ]; then
         echo "=== DEPLOY SUCCEEDED: all clients healthy on $target ==="
+        write_deploy_log "success" "$target" "$previous_commit" "$clients" "" "$(( $(date +%s) - start_ts ))"
         return 0
     fi
 
@@ -287,6 +329,7 @@ full_deploy() {
     echo "Reverted to:             $previous_commit"
     echo "Clients that failed the healthcheck on $target:$failed"
     echo "All clients' data + code restored to pre-deploy state."
+    write_deploy_log "rolled_back" "$target" "$previous_commit" "$clients" "$failed" "$(( $(date +%s) - start_ts ))"
     return 1
 }
 
