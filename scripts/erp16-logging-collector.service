@@ -1,0 +1,14 @@
+[Unit]
+Description=ERP16 logging/audit collector (Docker events + Odoo log tail)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/bin/python3 /home/ubuntu/DevOps_Files/scripts/logging_collector.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
