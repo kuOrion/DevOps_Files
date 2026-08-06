@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ERP16 Admin Console</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --surface: #f2f1ee; --card: #ffffff;
+    --border: #e5e3de; --text: #1a1a18; --text-secondary: #52514c; --text-muted: #726f68;
+    --success-bg: #eaf3de; --success-text: #27500a;
+    --danger-bg: #f6e6e6; --danger-text: #a32d2d;
+    --warning-bg: #faeeda; --warning-text: #854f0b; --warning-border: #f0c98a;
+    --accent: #185fa5; --accent-bg: #185fa5; --accent-contrast: #ffffff;
+    --shadow: 0 1px 2px rgba(20,20,15,0.05), 0 1px 8px rgba(20,20,15,0.03);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171715; --surface: #232320; --card: #211f1d;
+      --border: #37352f; --text: #f0efec; --text-secondary: #cbc9c0; --text-muted: #a3a099;
+      --success-bg: #173404; --success-text: #c0dd97;
+      --danger-bg: #3a2020; --danger-text: #f09595;
+      --warning-bg: #302205; --warning-text: #fac775; --warning-border: #6b4c14;
+      --accent: #85b7eb; --accent-bg: #2f6fb0; --accent-contrast: #ffffff;
+      --shadow: 0 1px 2px rgba(0,0,0,0.2), 0 2px 12px rgba(0,0,0,0.18);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; padding: 3rem 2.5rem 4rem;
+    font-size: 18px; line-height: 1.55;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--accent-bg);
+    color: var(--accent-contrast); font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  .fetch-note { font-size: 13.5px; color: var(--text-muted); }
+  .fetch-note.err { color: var(--danger-text); }
+  .header-actions { display: flex; align-items: center; gap: 14px; }
+  a.open-staging {
+    font: inherit; font-size: 14.5px; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+    border: 1px solid var(--accent) !important; color: var(--accent) !important; text-decoration: none;
+  }
+
+  .section-label {
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--accent); margin: 2rem 0 10px;
+  }
+  .section-label:first-of-type { margin-top: 0; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.4rem 1.6rem; box-shadow: var(--shadow);
+  }
+  .card + .card { margin-top: 12px; }
+  .card-heading {
+    font-size: 13px; font-weight: 700; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px;
+  }
+  .idle-line { color: var(--text-secondary); font-size: 16.5px; }
+
+  .commit-row {
+    display: flex; align-items: baseline; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid var(--border); font-size: 15px;
+  }
+  .commit-row:last-of-type { border-bottom: none; }
+  .commit-hash { font-family: ui-monospace, monospace; font-size: 13.5px; color: var(--text-muted); flex: none; }
+  .commit-msg { color: var(--text); }
+  .commit-author { color: var(--text-muted); font-size: 13.5px; margin-left: auto; flex: none; white-space: nowrap; }
+
+  .staging-note { color: var(--text-secondary); font-size: 14.5px; margin: 14px 0; }
+  .staging-note code { font-family: ui-monospace, monospace; background: var(--surface); padding: 1px 6px; border-radius: 4px; }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  button.act {
+    font: inherit; font-size: 15.5px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+    border: 1px solid var(--accent) !important; background: transparent !important; color: var(--accent) !important;
+    cursor: pointer; transition: opacity 0.12s ease;
+  }
+  button.act:disabled { opacity: 0.45; cursor: default; }
+  button.act.success {
+    background: #4c8c2b !important; border: 1px solid #4c8c2b !important; color: #ffffff !important;
+    width: 100%; padding: 13px 16px; font-size: 16px;
+  }
+
+  .deploy-card { background: var(--warning-bg); border: 1px solid var(--warning-border); }
+  .deploy-card .card-heading { color: var(--warning-text); }
+  .deploy-card .deploy-desc { color: var(--warning-text); font-size: 15px; margin-bottom: 14px; }
+  .deploy-card .deploy-desc code { font-family: ui-monospace, monospace; background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 4px; }
+
+  .job-log {
+    font-family: ui-monospace, monospace; font-size: 13px; color: var(--text-muted);
+    max-height: 160px; overflow-y: auto; white-space: pre-wrap; margin-top: 12px;
+    background: var(--surface); border-radius: 6px; padding: 8px 10px;
+  }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.3rem; box-shadow: var(--shadow); }
+  .tile-label { font-size: 13.5px; color: var(--text-secondary); margin-bottom: 6px; }
+  .tile-value { font-size: 23px; font-weight: 600; }
+  .tile-value.ok { color: var(--success-text); }
+  .tile-value.warn { color: var(--warning-text); }
+
+  .history-row {
+    display: grid; grid-template-columns: 100px 100px 1fr 90px 70px; gap: 10px; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14.5px;
+  }
+  .history-row:last-child { border-bottom: none; }
+  .history-time { color: var(--text-muted); font-size: 13.5px; }
+  .badge { font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; justify-self: start; }
+  .badge.success { background: var(--success-bg); color: var(--success-text); }
+  .badge.rolled_back { background: var(--danger-bg); color: var(--danger-text); }
+  .history-scope { color: var(--text-secondary); }
+  .history-hash { font-family: ui-monospace, monospace; font-size: 13.5px; color: var(--text-muted); }
+  .history-dur { color: var(--text-muted); font-size: 13.5px; text-align: right; }
+  .empty-note { color: var(--text-muted); font-size: 15px; }
+
+  .history-toggle {
+    display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); margin: 2rem 0 10px;
+  }
+  .history-toggle .chev { transition: transform 0.15s ease; font-size: 11px; }
+  .history-toggle.open .chev { transform: rotate(90deg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="brand">
+      <div class="brand-mark">A</div>
+      <h1>Admin console</h1>
+    </div>
+    <div class="header-actions">
+      <a class="open-staging" href="http://staging.erp16-sandbox.test:8443/web/login" target="_blank" rel="noopener">Open staging</a>
+      <div class="fetch-note" id="fetch-note">Checking for updates...</div>
+    </div>
+  </div>
+
+  <div class="section-label">Pending review</div>
+  <div id="pending-review-section"></div>
+
+  <div class="section-label">Health</div>
+  <div class="tiles" id="health-tiles"></div>
+
+  <div class="section-label">Recent changes</div>
+  <div class="card" id="recent-changes-card" style="max-height:320px;overflow-y:auto;"></div>
+
+  <div class="history-toggle" id="history-toggle" onclick="toggleHistory()">
+    <span class="chev">&#9656;</span> Deploy history
+  </div>
+  <div class="card" id="deploy-history-card" style="display:none;"></div>
+</div>
+
+<script>
+const STAGING_URL = 'http://staging.erp16-sandbox.test:8443/web/login';
+let jobPollTimer = null;
+let historyOpen = false;
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+function renderPendingReview(s) {
+  const el = document.getElementById('pending-review-section');
+  const jobRunning = s.job.state === 'running';
+
+  if (!s.has_pending) {
+    el.innerHTML = '<div class="card"><div class="idle-line">Live is up to date with main.</div></div>';
+    return;
+  }
+
+  const commitRows = s.pending_commits.map(c =>
+    '<div class="commit-row">' +
+      '<span class="commit-hash">' + esc(c.short) + '</span>' +
+      '<span class="commit-msg">' + esc(c.subject) + '</span>' +
+      '<span class="commit-author">' + esc(c.author) + '</span>' +
+    '</div>'
+  ).join('');
+
+  const stagingLabel = s.staging_matches_pending
+    ? 'Staging currently reflects: <code>' + esc(s.origin_commit) + '</code> (matches)'
+    : 'Staging currently reflects: <code>' + esc(s.staging_commit || 'none') + '</code> (older)';
+
+  let html = '<div class="card">' +
+    '<div class="card-heading">' + (s.staging_matches_pending ? 'Reviewed' : 'Changes not yet in staging') + '</div>' +
+    commitRows +
+    '<div class="staging-note">' + stagingLabel + '</div>';
+  if (!s.staging_matches_pending) {
+    html += '<div class="btn-row"><button class="act" id="review-btn" ' + (jobRunning ? 'disabled' : '') + '>Review</button></div>';
+  }
+  if (s.job.kind === 'review' && s.job.log.length) {
+    html += '<div class="job-log">' + esc(s.job.log.join('\n')) + '</div>';
+  }
+  html += '</div>';
+
+  if (s.ready_to_deploy) {
+    html += '<div class="card deploy-card">' +
+      '<div class="card-heading">Ready to deploy</div>' +
+      '<div class="deploy-desc">Staging now matches <code>' + esc(s.origin_commit) + '</code> and has been reviewed. This deploys to all live clients.</div>' +
+      '<button class="act success" id="deploy-btn" ' + (jobRunning ? 'disabled' : '') + '>Approve and deploy</button>';
+    if (s.job.kind === 'deploy' && s.job.log.length) {
+      html += '<div class="job-log">' + esc(s.job.log.join('\n')) + '</div>';
+    }
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+
+  const reviewBtn = document.getElementById('review-btn');
+  if (reviewBtn) reviewBtn.addEventListener('click', doReview);
+  const deployBtn = document.getElementById('deploy-btn');
+  if (deployBtn) deployBtn.addEventListener('click', doDeploy);
+}
+
+function renderHealth(h) {
+  const containersOk = h.containers_total > 0 && h.containers_up === h.containers_total;
+  document.getElementById('health-tiles').innerHTML =
+    '<div class="tile"><div class="tile-label">Containers up</div>' +
+      '<div class="tile-value ' + (containersOk ? 'ok' : 'warn') + '">' + h.containers_up + ' / ' + h.containers_total + '</div></div>' +
+    '<div class="tile"><div class="tile-label">Disk used</div>' +
+      '<div class="tile-value">' + (h.disk_pct != null ? h.disk_pct + '%' : '--') + '</div></div>' +
+    '<div class="tile"><div class="tile-label">Memory used</div>' +
+      '<div class="tile-value">' + (h.mem_pct != null ? h.mem_pct + '%' : '--') + '</div></div>';
+}
+
+function renderHistory(rows) {
+  const el = document.getElementById('deploy-history-card');
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-note">No deploys yet.</div>';
+    return;
+  }
+  el.innerHTML = rows.map(r => {
+    const badgeClass = r.result === 'success' ? 'success' : 'rolled_back';
+    const badgeLabel = r.result === 'success' ? 'Success' : 'Rolled back';
+    const when = new Date(r.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const scope = (r.clients || []).length ? 'All ' + r.clients.length + ' clients' : '--';
+    return '<div class="history-row">' +
+      '<span class="history-time">' + esc(when) + '</span>' +
+      '<span class="badge ' + badgeClass + '">' + badgeLabel + '</span>' +
+      '<span class="history-scope">' + esc(scope) + '</span>' +
+      '<span class="history-hash">' + esc((r.target_commit || '').slice(0, 7)) + '</span>' +
+      '<span class="history-dur">' + esc(r.duration_seconds) + 's</span>' +
+    '</div>';
+  }).join('');
+}
+
+function renderFetchNote(s) {
+  const el = document.getElementById('fetch-note');
+  if (s.last_fetch_error) {
+    el.textContent = 'Fetch error: ' + s.last_fetch_error;
+    el.classList.add('err');
+    return;
+  }
+  el.classList.remove('err');
+  if (!s.last_fetch_at) {
+    el.textContent = 'Checking for updates...';
+    return;
+  }
+  el.textContent = 'Last checked: ' + new Date(s.last_fetch_at).toLocaleTimeString();
+}
+
+function toggleHistory() {
+  historyOpen = !historyOpen;
+  document.getElementById('history-toggle').classList.toggle('open', historyOpen);
+  document.getElementById('deploy-history-card').style.display = historyOpen ? 'block' : 'none';
+}
+
+async function loadRecentChanges() {
+  const el = document.getElementById('recent-changes-card');
+  let data;
+  try {
+    const res = await fetch('/api/recent-changes');
+    data = await res.json();
+  } catch (e) {
+    el.innerHTML = '<div class="empty-note">Could not load recent changes.</div>';
+    return;
+  }
+  const changes = data.changes || [];
+  if (!changes.length) {
+    el.innerHTML = '<div class="empty-note">No commits yet.</div>';
+    return;
+  }
+  el.innerHTML = changes.map(c =>
+    '<div class="commit-row">' +
+      '<span class="commit-hash">' + esc(c.hash) + '</span>' +
+      '<span class="commit-msg">' + esc(c.subject) + '</span>' +
+      '<span class="commit-author">' + esc(c.author) + ' &middot; ' + esc(c.when) + '</span>' +
+    '</div>'
+  ).join('');
+}
+
+async function refresh() {
+  let s;
+  try {
+    const res = await fetch('/api/status');
+    s = await res.json();
+  } catch (e) {
+    return;
+  }
+  renderFetchNote(s);
+  renderPendingReview(s);
+  renderHealth(s.health);
+  renderHistory(s.deploy_history);
+
+  if (s.job.state === 'running') {
+    if (!jobPollTimer) jobPollTimer = setInterval(refresh, 1500);
+  } else if (jobPollTimer) {
+    clearInterval(jobPollTimer);
+    jobPollTimer = null;
+  }
+}
+
+async function doReview() {
+  // window.open must run synchronously, before any await, or the browser
+  // no longer treats it as tied to the click and blocks the popup.
+  window.open(STAGING_URL, '_blank', 'noopener');
+  await fetch('/api/review', { method: 'POST' });
+  refresh();
+}
+
+async function doDeploy() {
+  await fetch('/api/deploy', { method: 'POST' });
+  refresh();
+}
+
+refresh();
+loadRecentChanges();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

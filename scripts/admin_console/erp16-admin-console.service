@@ -1,0 +1,15 @@
+[Unit]
+Description=ERP16 admin console (Flask, tunnel-only)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/DevOps_Files/scripts/admin_console
+ExecStart=/usr/bin/python3 /home/ubuntu/DevOps_Files/scripts/admin_console/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
