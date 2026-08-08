@@ -1,7 +1,0 @@
-{
-  "_comment": "Phone-number RBAC allowlist. Empty senders = bootstrap mode (log + process everyone, used only to discover real JIDs during initial linking -- watch run.log for BOOTSTRAP_UNKNOWN_SENDER lines). Once populated, only listed senders are processed; everyone else is silently dropped. Each entry: normalized WhatsApp JID -> Odoo identity. Copy this file to senders.json (gitignored, real personal data) and fill in real JIDs/uids before running.",
-  "senders": {
-    "<phone-number>@s.whatsapp.net": { "name": "Full Name", "odoo_login": "user@example.com", "odoo_uid": 0 },
-    "<lid>@lid": { "name": "Full Name", "odoo_login": "user@example.com", "odoo_uid": 0 }
-  }
-}
