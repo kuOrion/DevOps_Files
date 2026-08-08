@@ -26,3 +26,23 @@ __pycache__/
 # OS/editor
 .DS_Store
 Thumbs.db
+
+# ziva_bridge -- WhatsApp linked-device session (credential, never commit),
+# real message content, and regenerable Node dependencies.
+scripts/ziva_bridge/node_modules/
+scripts/ziva_bridge/auth/
+scripts/ziva_bridge/messages.log
+scripts/ziva_bridge/last_ack.json
+scripts/ziva_bridge/outbox/
+scripts/ziva_bridge/outbox_sent/
+scripts/ziva_bridge/qr.png
+scripts/ziva_bridge/run.log
+scripts/ziva_bridge/attachments/
+scripts/ziva_bridge/status.json
+scripts/ziva_bridge/tray.log
+
+# Real phone-number -> Odoo-identity RBAC allowlist -- contains a real
+# personal WhatsApp JID, differs per deployment (rehearsal SIM vs personal
+# testing, and needs Ravi Sir's + dev's numbers added before the rehearsal).
+# senders.example.json is the committed template; this is the live config.
+scripts/ziva_bridge/senders.json
