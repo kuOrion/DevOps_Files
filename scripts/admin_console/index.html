@@ -146,7 +146,7 @@
       <h1>Admin console</h1>
     </div>
     <div class="header-actions">
-      <a class="open-staging" href="http://staging.erp16-sandbox.test:8443/web/login" target="_blank" rel="noopener">Open staging</a>
+      <a class="open-staging" href="http://localhost:8209/web/login" target="_blank" rel="noopener">Open staging</a>
       <button class="act" id="check-now-btn" style="padding:7px 14px;font-size:14.5px;">Check for changes</button>
       <div class="fetch-note" id="fetch-note">Checking for updates...</div>
     </div>
@@ -168,7 +168,16 @@
 </div>
 
 <script>
-const STAGING_URL = 'http://staging.erp16-sandbox.test:8443/web/login';
+// 127.0.0.1:8209 is staging-web's own direct port binding (clients.yaml's
+// staging entry), unconditionally true regardless of environment -- works
+// the same reached via a direct SSH tunnel to this port on either the
+// sandbox or real production. Previously hardcoded the sandbox's own
+// pseudo-domain HAProxy route (staging.erp16-sandbox.test:8443), which is
+// a nicer *additional* access method that only exists on the sandbox
+// rehearsal, not the only way in -- broke real production, which has no
+// pseudo-domain routing for staging at all (deliberately tunnel-only, see
+// clients.yaml).
+const STAGING_URL = 'http://localhost:8209/web/login';
 let jobPollTimer = null;
 let historyOpen = false;
 // Set by doReview(), consumed by refresh() once the review job (which
