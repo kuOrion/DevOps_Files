@@ -933,7 +933,7 @@ _AUDIT_TOOL_RE = re.compile(r"\b(psql|test)\b")
 KNOWN_SYSTEMD_UNITS = {
     "acpid.service", "chrony.service", "containerd.service", "cron.service",
     "dbus.service", "docker.service", "erp16-admin-console.service",
-    "erp16-logging-collector.service",
+    "erp16-logging-collector.service", "erp16-nightly-sanitize.service",
     "getty@tty1.service", "haproxy.service", "irqbalance.service",
     "multipathd.service", "networkd-dispatcher.service",
     "packagekit.service", "polkit.service", "rsyslog.service",

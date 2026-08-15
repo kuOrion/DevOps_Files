@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the ERP16 nightly sanitization pipeline daily at 2am IST
+
+[Timer]
+# Production runs in UTC (confirmed via timedatectl) -- IST is UTC+5:30,
+# so 2:00 AM IST is 20:30 UTC the previous calendar day. Persistent=true
+# catches up a missed run if the box was down/rebooting right at 20:30.
+OnCalendar=*-*-* 20:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

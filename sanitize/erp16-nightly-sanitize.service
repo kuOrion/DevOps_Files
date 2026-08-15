@@ -1,0 +1,10 @@
+[Unit]
+Description=ERP16 nightly sanitization pipeline (pull + sanitize + publish all clients)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/DevOps_Files/sanitize
+ExecStart=/bin/bash /home/ubuntu/DevOps_Files/sanitize/nightly_sanitize.sh
