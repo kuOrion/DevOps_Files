@@ -16,15 +16,17 @@ clients:
     postgres_version: "14.15"
     hosting: cloud            # cloud | onprem
     onprem_tier: null         # tier1 | tier2 | null (only meaningful if hosting: onprem)
-    list_db: true             # flip to false once per-client HAProxy routing exists (milestone 5/6)
-    proxy_mode: false         # true once behind HAProxy
+    list_db: false             # 2026-08-15: real cutover, single-tenant container -- closes the
+                               # standing list_db security TODO for real, not deferred again
+    proxy_mode: true           # 2026-08-15: real cutover -- genuinely behind the production HAProxy
+                               # (config/haproxy-production.cfg), trusts X-Forwarded-* for real client IPs
     workers: 2
-    cron_enabled: false       # sandbox-safety default: no cron worker at all (kills any outbound-capable
-                               # automation - mail queues, SMS, payment post-process - regardless of what's
-                               # active in the restored DB). Only flip true for a real deploy (milestone 5/10).
+    cron_enabled: true        # 2026-08-15: real cutover (milestone 5/10) -- real users depend on
+                               # scheduled actions (invoicing, mail queues, etc), must not be silently off
     http_port: 8069           # host-side bind (127.0.0.1 only) — must be unique per client on one host
     longpolling_port: 8072
-    domain: null              # HAProxy routing target once per-client routing exists; null = not yet exposed
+    domain: erp16.orion-instruments.io   # 2026-08-15: real cutover, live -- the bare domain itself
+                               # (not a subdomain, unlike every other client below)
     secrets_ref: /erp16-sandbox/orion-internal   # sandbox SSM path prefix (see build/README.md); repointed at the
                                         # client's real AWS account once milestone 2 is production-ready
     modules:                  # verified 2026-07-31 via ir_module_module state='installed'
@@ -115,16 +117,21 @@ clients:
     hosting: cloud
     onprem_tier: null
     list_db: true             # single-client sandbox for now; flip false once milestone 6 lands
-    proxy_mode: false         # true once behind HAProxy (not applicable — tunnel-only, see below)
+    proxy_mode: true           # 2026-08-15: real cutover -- see the temporary-exposure note on `domain` below
     workers: 2
     cron_enabled: false       # sandbox-safety default - see orion-internal's note above
     http_port: 8089           # distinct from orion-internal's 8069/parus's 8079 -- multi-client-at-once
                                # (dev-start.sh, demo) needs every client on a unique port, not just
                                # "whichever one isn't currently running"
     longpolling_port: 8092
-    domain: null              # PERMANENTLY excluded from milestone 5 public routing — this is Orion's
-                               # own internal duplicate of orion-internal, not a separate external client (see
-                               # ROADMAP.md's milestone 5 note); stays tunnel-only via browse_sandbox
+    domain: oriontest.erp16.orion-instruments.io   # 2026-08-15: TEMPORARILY live, overriding the
+                               # "PERMANENTLY excluded" design intent below -- deliberate, so the
+                               # client's admin can review all 5 clients from a browser on Monday
+                               # 2026-08-17 and decide what stays exposed. Revisit after that
+                               # conversation; the original reasoning still holds otherwise: this is
+                               # Orion's own internal duplicate of orion-internal, not a separate
+                               # external client (see ROADMAP.md's milestone 5 note), and the intent
+                               # is tunnel-only long-term.
     secrets_ref: /erp16-sandbox/orion_test   # sandbox SSM path prefix (see build/README.md); repointed at
                                               # the client's real AWS account once milestone 2 is production-ready
     modules:                  # verified 2026-08-01 via ir_module_module state='installed'
@@ -214,13 +221,15 @@ clients:
     postgres_version: "14.15"
     hosting: cloud
     onprem_tier: null
-    list_db: true             # flip to false once per-client HAProxy routing exists (milestone 6, planned for this client)
-    proxy_mode: false         # true once behind HAProxy (milestone 5, planned for this client)
+    list_db: true             # flip to false once ready to fully close list_db, same as orion-internal
+    proxy_mode: true           # 2026-08-15: real cutover -- genuinely behind production HAProxy now
     workers: 2
-    cron_enabled: false       # sandbox-safety default - see orion-internal's note above
+    cron_enabled: false       # sandbox-safety default - see orion-internal's note above -- NOTE: this
+                               # is a real external client now live in production; revisit whether
+                               # cron should be true here too, same reasoning as orion-internal
     http_port: 8079           # unique per client on one host - orion-internal already uses 8069
     longpolling_port: 8082
-    domain: null              # target once milestone 5 lands here: parusinstruments.erp16.orion-instruments.io
+    domain: parusinstruments.erp16.orion-instruments.io   # 2026-08-15: real cutover, live
     secrets_ref: /erp16-sandbox/parus_instruments   # sandbox SSM path prefix (see build/README.md); repointed at
                                                      # the client's real AWS account once milestone 2 is production-ready
     modules: []               # verified 2026-08-01 via ir_module_module state='installed' - core Odoo only,
@@ -236,13 +245,15 @@ clients:
     postgres_version: "14.15"
     hosting: cloud
     onprem_tier: null
-    list_db: true             # flip to false once per-client HAProxy routing exists
-    proxy_mode: false         # true once behind HAProxy
+    list_db: true             # flip to false once ready to fully close list_db, same as orion-internal
+    proxy_mode: true           # 2026-08-15: real cutover -- genuinely behind production HAProxy now
     workers: 2
-    cron_enabled: false       # sandbox-safety default - see orion-internal's note above
+    cron_enabled: false       # sandbox-safety default - see orion-internal's note above -- NOTE: this
+                               # is a real external client now live in production; revisit whether
+                               # cron should be true here too, same reasoning as orion-internal
     http_port: 8099           # unique per client on one host
     longpolling_port: 8102
-    domain: null
+    domain: punaeyecare.erp16.orion-instruments.io   # 2026-08-15: real cutover, live
     secrets_ref: /erp16-sandbox/puna_eye_care   # sandbox SSM path prefix (see build/README.md); repointed at
                                                  # the client's real AWS account once milestone 2 is production-ready
     modules:                  # verified 2026-08-05 via ir_module_module state='installed' on production,
@@ -267,13 +278,15 @@ clients:
     postgres_version: "14.15"
     hosting: cloud
     onprem_tier: null
-    list_db: true             # flip to false once per-client HAProxy routing exists
-    proxy_mode: false         # true once behind HAProxy
+    list_db: true             # flip to false once ready to fully close list_db, same as orion-internal
+    proxy_mode: true           # 2026-08-15: real cutover -- see the temporary-exposure note under
+                               # orion_test above, same reasoning applies here (internal duplicate,
+                               # not a separate external client, temporarily public for Monday's review)
     workers: 2
     cron_enabled: false       # sandbox-safety default - see orion-internal's note above
     http_port: 8109           # unique per client on one host
     longpolling_port: 8112
-    domain: null
+    domain: dbtest.erp16.orion-instruments.io   # 2026-08-15: TEMPORARILY live, see orion_test's note above
     secrets_ref: /erp16-sandbox/db_test   # sandbox SSM path prefix (see build/README.md); repointed at
                                           # the client's real AWS account once milestone 2 is production-ready
     modules:                  # verified 2026-08-05 via ir_module_module state='installed' on production,
@@ -284,6 +297,31 @@ clients:
       - orion_manufacturing
       - orion_sale_report
       - report_py3o
+    backup:
+      daily_retention_days: 10
+      monthly_snapshot_retention_months: 12
+
+  earthmech:
+    display_name: "Earthmech (on-prem understudy)"
+    db_name: earthmech
+    odoo_version: "16.0"
+    postgres_version: "14.15"
+    hosting: onprem            # deliberately excluded from the sandbox's live area -- runs on the
+                                 # operator's own laptop only, standing in for a real Tier-2 on-prem client
+                                 # (see docs/rehearsal/INFRASTRUCTURE.md). Never a live-<client>-* container.
+    onprem_tier: tier2
+    list_db: true
+    proxy_mode: false
+    workers: 2
+    cron_enabled: false        # sandbox-safety default - see orion-internal's note above
+    http_port: 8119            # unique per client on one host
+    longpolling_port: 8122
+    domain: null                # on-prem clients never get HAProxy routing, by design
+    secrets_ref: /erp16-sandbox/earthmech   # sandbox SSM path prefix; repointed at the client's real
+                                             # AWS account (or equivalent on-prem secrets store) once real
+    modules: []                # verified 2026-08-10 via ir_module_module state='installed' against the
+                                 # freshly-pulled+sanitized copy - core Odoo only (accounting, CRM, sales,
+                                 # purchase, stock), zero custom Orion modules installed for this client
     backup:
       daily_retention_days: 10
       monthly_snapshot_retention_months: 12
