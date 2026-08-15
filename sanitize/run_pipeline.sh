@@ -7,13 +7,13 @@
 # sanitize-db/sanitize-web -- this script itself just needs docker exec
 # access to those two containers, which erp16-sanitizer does NOT have
 # directly either; in practice this is invoked by an orchestrator with
-# broader access, same as erp16-pull-client.sh is invoked by/for
+# broader access, same as pull_from_live.sh is invoked by/for
 # erp16-puller rather than run interactively as that user).
 #
 # Never connects to a live client database. Only ever touches:
 #   - sanitize-db / sanitize-web (its own throwaway scratch stack)
 #   - /opt/erp16/raw/<client_id>/ (read-only handoff dump, written
-#     earlier by erp16-pull-client.sh -- this script does not pull)
+#     earlier by pull_from_live.sh -- this script does not pull)
 #
 # set -e is critical here -- see the original script's comment on the
 # silent-failure incident this guards against. Still true.
@@ -45,7 +45,7 @@ echo "=== Client: $CLIENT_ID (sanitized db: $SANITIZED_DB_NAME) ==="
 
 echo "=== STEP -1: verify the puller already dropped a fresh pull here ==="
 if [ ! -f "$RAW_DIR/db.dump" ] || [ ! -f "$RAW_DIR/filestore.tar.gz" ]; then
-    echo "FATAL: no pulled data at $RAW_DIR -- run erp16-pull-client.sh $CLIENT_ID first" >&2
+    echo "FATAL: no pulled data at $RAW_DIR -- run pull_from_live.sh $CLIENT_ID first" >&2
     exit 1
 fi
 
@@ -114,7 +114,7 @@ docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SAN
 echo "=== STEP 6: cleanup -- intermediate CSVs + this run's handoff dump/filestore ==="
 docker exec "$WEB" rm -f "/tmp/pii_"*"_${SOURCE_DB_NAME}.csv" "/tmp/substring_hunt_hits_${SOURCE_DB_NAME}.csv" 2>/dev/null || true
 rm -f "$RAW_DIR/db.dump" "$RAW_DIR/filestore.tar.gz"
-echo "handoff dump/filestore for $CLIENT_ID removed -- next run needs a fresh erp16-pull-client.sh pull"
+echo "handoff dump/filestore for $CLIENT_ID removed -- next run needs a fresh pull_from_live.sh pull"
 
 PIPELINE_END=$(date +%s)
 echo "=== PIPELINE COMPLETE in $((PIPELINE_END - PIPELINE_START))s ==="
