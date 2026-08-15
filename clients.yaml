@@ -11,7 +11,10 @@
 clients:
   orion-internal:
     display_name: "Orion Internal"
-    db_name: db_orion_test_18_dec
+    db_name: orion_internal   # 2026-08-15: renamed from db_orion_test_18_dec (a legacy label
+                               # predating this redesign, meaningless to anyone now) via
+                               # ALTER DATABASE, matching the client_id everywhere else --
+                               # metadata-only rename, reversible the same way if ever needed
     odoo_version: "16.0"
     postgres_version: "14.15"
     hosting: cloud            # cloud | onprem
