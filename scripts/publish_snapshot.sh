@@ -1,17 +1,27 @@
 #!/bin/bash
-# Publish a client's sanitized sandbox database + filestore to S3, for
+# Publish a client's sanitized database + filestore to S3, for
 # dev-start.sh to pull down onto a developer's laptop (Option B).
+#
+# Two modes:
+#   ./publish_snapshot.sh <client_id>              -- remote mode (original,
+#     rehearsal-only): SSHes to a remote host (--host, default "sandbox") to
+#     dump/tar, scp's both back to THIS machine, uploads from here.
+#   ./publish_snapshot.sh <client_id> --local       -- local mode: runs
+#     entirely on the machine this script is invoked on, no SSH/scp at all.
+#     This is the real-production mode -- a nightly cron job must work
+#     whether or not a laptop is connected, so it cannot depend on SSHing
+#     out to fetch data (2026-08-15, corrected after remote mode was found
+#     to be a rehearsal-only convenience, not the documented design --
+#     docs/specs/Secrets_Management.docx specifies the server's own
+#     credential should do this, not a laptop-mediated round-trip).
 #
 # Manual trigger for now (per-client, run after build/sanitize/run_pipeline.sh
 # produces a fresh sanitized snapshot) -- the nightly-automated version is a
-# post-demo item, not needed until more than one client goes through this.
+# post-demo item on the sandbox, but IS the point of --local mode on real
+# production (see ROADMAP.md's sanitization-pipeline plan, Part 8).
 #
-# Runs FROM the developer/build machine (not the sandbox itself): SSHes into
-# the sandbox to dump the DB + tar the filestore, scp's both back locally,
-# then uploads to S3 using this machine's already-configured `erp16-sandbox`
-# AWS profile (confirmed working: full read/write on erp16-sandbox-snapshots).
-#
-# Usage: ./publish_snapshot.sh <client_id>
+# Usage: ./publish_snapshot.sh <client_id> [--local] [--host <ssh-alias>]
+#   [--aws-profile <profile>]
 #
 # Re-pointed 2026-08-05 from the old orion_test-db_orion_test-1/
 # orion_test-web_orion_test-1 shared-instance container names to
@@ -22,7 +32,22 @@
 # itself, so it's still sitting in sanitize-db/sanitize-web waiting here.
 set -euo pipefail
 
-CLIENT_ID="${1:?Usage: publish_snapshot.sh <client_id>}"
+CLIENT_ID="${1:?Usage: publish_snapshot.sh <client_id> [--local] [--host <ssh-alias>] [--aws-profile <profile>]}"
+shift
+
+LOCAL_MODE=false
+SSH_HOST="sandbox"
+AWS_PROFILE="erp16-sandbox"
+AWS_REGION="ap-south-1"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --local) LOCAL_MODE=true; shift ;;
+        --host) SSH_HOST="$2"; shift 2 ;;
+        --aws-profile) AWS_PROFILE="$2"; shift 2 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
 
 # Shared with run_pipeline.sh -- one source of truth for the client ->
 # sanitized-db-name mapping instead of each script keeping its own copy
@@ -35,33 +60,44 @@ fi
 
 BUCKET="erp16-sandbox-snapshots"
 S3_PREFIX="s3://${BUCKET}/sanitized/${CLIENT_ID}/latest"
-AWS_PROFILE="erp16-sandbox"
-AWS_REGION="ap-south-1"
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
 
-echo "=== Dumping ${SANITIZED_DB_NAME} on the sandbox ==="
-ssh sandbox "docker exec sanitize-db pg_dump -U odoo --no-owner --no-privileges -Fc ${SANITIZED_DB_NAME} > /tmp/publish_${CLIENT_ID}.dump"
+if [ "$LOCAL_MODE" = true ]; then
+    echo "=== [local mode] Dumping ${SANITIZED_DB_NAME} on this machine ==="
+    docker exec sanitize-db pg_dump -U odoo --no-owner --no-privileges -Fc "${SANITIZED_DB_NAME}" > "$WORKDIR/db.dump"
 
-echo "=== Tarring filestore on the sandbox ==="
-# Tar the CONTENTS of the sanitized db's filestore folder, not the folder
-# itself -- the tarball must have no leading directory name, since the
-# developer's local db is named differently (client_id, e.g. "orion_test")
-# than the sandbox's sanitized copy (e.g. "orm_test"). A tarball with an
-# "orm_test/" prefix extracts to the wrong path on the developer's
-# machine and every attachment/asset lookup 404s -- found exactly this
-# way during dev-start.sh's first real end-to-end test.
-ssh sandbox "docker exec sanitize-web tar -C /var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME} -czf /tmp/publish_${CLIENT_ID}_filestore.tar.gz ."
-ssh sandbox "docker cp sanitize-web:/tmp/publish_${CLIENT_ID}_filestore.tar.gz /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
+    echo "=== [local mode] Tarring filestore on this machine ==="
+    # Tar the CONTENTS of the sanitized db's filestore folder, not the folder
+    # itself -- see the remote-mode comment below for why this matters, same
+    # reasoning applies here.
+    docker exec sanitize-web tar -C "/var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME}" -czf "/tmp/publish_${CLIENT_ID}_filestore.tar.gz" .
+    docker cp "sanitize-web:/tmp/publish_${CLIENT_ID}_filestore.tar.gz" "$WORKDIR/filestore.tar.gz"
+    docker exec -u root sanitize-web rm -f "/tmp/publish_${CLIENT_ID}_filestore.tar.gz"
+else
+    echo "=== [remote mode, rehearsal-only] Dumping ${SANITIZED_DB_NAME} on ${SSH_HOST} ==="
+    ssh "$SSH_HOST" "docker exec sanitize-db pg_dump -U odoo --no-owner --no-privileges -Fc ${SANITIZED_DB_NAME} > /tmp/publish_${CLIENT_ID}.dump"
 
-echo "=== Pulling both artifacts back to this machine ==="
-scp -q "sandbox:/tmp/publish_${CLIENT_ID}.dump" "$WORKDIR/db.dump"
-scp -q "sandbox:/tmp/publish_${CLIENT_ID}_filestore.tar.gz" "$WORKDIR/filestore.tar.gz"
+    echo "=== [remote mode] Tarring filestore on ${SSH_HOST} ==="
+    # Tar the CONTENTS of the sanitized db's filestore folder, not the folder
+    # itself -- the tarball must have no leading directory name, since the
+    # developer's local db is named differently (client_id, e.g. "orion_test")
+    # than the sandbox's sanitized copy (e.g. "orm_test"). A tarball with an
+    # "orm_test/" prefix extracts to the wrong path on the developer's
+    # machine and every attachment/asset lookup 404s -- found exactly this
+    # way during dev-start.sh's first real end-to-end test.
+    ssh "$SSH_HOST" "docker exec sanitize-web tar -C /var/lib/odoo/.local/share/Odoo/filestore/${SANITIZED_DB_NAME} -czf /tmp/publish_${CLIENT_ID}_filestore.tar.gz ."
+    ssh "$SSH_HOST" "docker cp sanitize-web:/tmp/publish_${CLIENT_ID}_filestore.tar.gz /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
 
-echo "=== Cleaning up sandbox-side temp files ==="
-ssh sandbox "rm -f /tmp/publish_${CLIENT_ID}.dump /tmp/publish_${CLIENT_ID}_filestore.tar.gz; docker exec sanitize-web rm -f /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
+    echo "=== [remote mode] Pulling both artifacts back to this machine ==="
+    scp -q "${SSH_HOST}:/tmp/publish_${CLIENT_ID}.dump" "$WORKDIR/db.dump"
+    scp -q "${SSH_HOST}:/tmp/publish_${CLIENT_ID}_filestore.tar.gz" "$WORKDIR/filestore.tar.gz"
 
-echo "=== Uploading to ${S3_PREFIX} ==="
+    echo "=== [remote mode] Cleaning up ${SSH_HOST}-side temp files ==="
+    ssh "$SSH_HOST" "rm -f /tmp/publish_${CLIENT_ID}.dump /tmp/publish_${CLIENT_ID}_filestore.tar.gz; docker exec sanitize-web rm -f /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
+fi
+
+echo "=== Uploading to ${S3_PREFIX} (profile: ${AWS_PROFILE}) ==="
 date -u +%Y-%m-%dT%H:%M:%SZ > "$WORKDIR/published_at.txt"
 echo "$SANITIZED_DB_NAME" > "$WORKDIR/source_db.txt"
 aws s3 cp "$WORKDIR/db.dump" "${S3_PREFIX}/db.dump" --profile "$AWS_PROFILE" --region "$AWS_REGION"
