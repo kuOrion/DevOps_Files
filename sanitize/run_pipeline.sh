@@ -27,10 +27,19 @@ WEB=sanitize-web
 DBHOST=db   # sanitize-web's own HOST env var / compose network alias -- not a shared-instance alias anymore
 RAW_DIR="/opt/erp16/raw/${CLIENT_ID}"
 
+# BUILD_DIR-relative, not a hardcoded /opt/erp16/sanitize/ path -- that
+# was the sandbox's original placement for staging/sanitize output,
+# since superseded (2026-08-15): everything except logs/runtime-state
+# (which genuinely needs to survive a DevOps_Files reclone/reset) now
+# lives consistently under DevOps_Files/generated/, matching live-area's
+# convention, not split across two locations. See ROADMAP.md's
+# reasoning for the switch.
+BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # Read live from the compose file rather than hardcoding -- this
 # container's password is generated fresh per render, unlike the old
 # shared instance's long-lived literal.
-DBPASS=$(grep -oP 'POSTGRES_PASSWORD: \K.*' /opt/erp16/sanitize/docker-compose.yml | head -1)
+DBPASS=$(grep -oP 'POSTGRES_PASSWORD: \K.*' "$BUILD_DIR/generated/sanitize/docker-compose.yml" | head -1)
 
 source "$(dirname "${BASH_SOURCE[0]}")/pipeline_clients.sh"
 SANITIZED_DB_NAME=$(resolve_sanitized_db "$CLIENT_ID")
