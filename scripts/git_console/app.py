@@ -45,6 +45,17 @@ ADDONS_DIR = os.environ.get(
 CLIENTS_YAML = os.path.join(BUILD_DIR, "clients.yaml")
 DEV_START = os.path.join(BUILD_DIR, "scripts", "dev-start.sh")
 
+# dev-start.sh's own default (erp16-sandbox) is the broad admin profile,
+# meant for ad-hoc CLI use -- a real dev laptop running this console has
+# its own named, scoped-read-only-on-sanitized/* profile instead (see
+# DRESS_REHEARSAL.md 2.6, sarthak-dev/priya-dev). Empty by default so
+# nothing changes for anyone who hasn't set this.
+DEV_CONSOLE_AWS_PROFILE = os.environ.get("DEV_CONSOLE_AWS_PROFILE", "")
+
+
+def _aws_profile_args():
+    return ["--aws-profile", DEV_CONSOLE_AWS_PROFILE] if DEV_CONSOLE_AWS_PROFILE else []
+
 app = Flask(__name__)
 
 # In-memory job state -- one dev's own laptop, one console, no need for a
@@ -134,7 +145,7 @@ def api_start(client_id):
     with _jobs_lock:
         if _jobs.get(client_id, {}).get("state") == "running":
             return jsonify({"error": "already starting"}), 409
-    t = threading.Thread(target=_run_job, args=(client_id, []), daemon=True)
+    t = threading.Thread(target=_run_job, args=(client_id, _aws_profile_args()), daemon=True)
     t.start()
     return jsonify({"ok": True})
 
@@ -227,7 +238,7 @@ def _run_get_latest(client_id):
         return
 
     _job_log(client_id, "Refreshing sanitized data...")
-    cmd = [DEV_START, client_id, "--refresh"]
+    cmd = [DEV_START, client_id, "--refresh"] + _aws_profile_args()
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
     )
