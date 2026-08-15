@@ -341,7 +341,7 @@ async function refreshChanges() {
   const idleView = document.getElementById('changes-idle-view');
   const activeView = document.getElementById('changes-active-view');
 
-  if (!data.files.length) {
+  if (!data.files.length && !data.ahead_count) {
     idleView.style.display = 'block';
     activeView.style.display = 'none';
     document.getElementById('repo-name-idle').textContent = data.repo;
@@ -353,7 +353,13 @@ async function refreshChanges() {
   document.getElementById('repo-name-active').textContent = data.repo;
 
   const badge = document.getElementById('changes-badge');
-  badge.textContent = `${data.files.length} unsaved`;
+  // Saved-but-unsent state: no uncommitted files (Save Changes already
+  // committed them locally), but real commits sitting ahead of origin/main
+  // that Send for Review still needs to push -- keep that button visible
+  // and say so explicitly rather than showing a stale/misleading count.
+  badge.textContent = data.files.length
+    ? `${data.files.length} unsaved`
+    : `${data.ahead_count} saved, ready to send`;
 
   document.getElementById('git-files').innerHTML = data.files.map(f => {
     const cls = f.code.includes('A') ? 'code-added' : f.code.includes('D') ? 'code-deleted' : 'code-modified';

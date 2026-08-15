@@ -98,6 +98,15 @@
     max-height: 160px; overflow-y: auto; white-space: pre-wrap; margin-top: 12px;
     background: var(--surface); border-radius: 6px; padding: 8px 10px;
   }
+  .working-row {
+    display: flex; align-items: center; gap: 8px; font-size: 14px;
+    color: var(--text-secondary); margin-top: 12px;
+  }
+  .spinner-small {
+    width: 14px; height: 14px; flex-shrink: 0; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
   .tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.3rem; box-shadow: var(--shadow); }
@@ -138,6 +147,7 @@
     </div>
     <div class="header-actions">
       <a class="open-staging" href="http://staging.erp16-sandbox.test:8443/web/login" target="_blank" rel="noopener">Open staging</a>
+      <button class="act" id="check-now-btn" style="padding:7px 14px;font-size:14.5px;">Check for changes</button>
       <div class="fetch-note" id="fetch-note">Checking for updates...</div>
     </div>
   </div>
@@ -161,6 +171,27 @@
 const STAGING_URL = 'http://staging.erp16-sandbox.test:8443/web/login';
 let jobPollTimer = null;
 let historyOpen = false;
+// Set by doReview(), consumed by refresh() once the review job (which
+// already waits for staging-web to actually respond, see
+// _wait_for_staging_healthy() server-side) reaches state 'done' -- avoids
+// the tab loading staging mid-restart and rendering with no CSS/JS, since
+// HAProxy/Odoo can return an incomplete response while the container is
+// still coming back up.
+let pendingStagingTab = null;
+
+const WAITING_PAGE_HTML = `<!doctype html><html><head><title>Staging</title>
+<style>
+  body { font-family: -apple-system, sans-serif; display: flex; align-items: center;
+    justify-content: center; height: 100vh; margin: 0; background: #1e1e2e; color: #cdd6f4; }
+  .box { text-align: center; }
+  .spinner { width: 32px; height: 32px; border: 3px solid #45475a; border-top-color: #89b4fa;
+    border-radius: 50%; margin: 0 auto 16px; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  p { opacity: 0.8; }
+</style></head>
+<body><div class="box"><div class="spinner"></div>
+<p id="msg">Restarting staging and waiting for it to come back up...</p>
+</div></body></html>`;
 
 function esc(s) {
   const d = document.createElement('div');
@@ -197,6 +228,7 @@ function renderPendingReview(s) {
     html += '<div class="btn-row"><button class="act" id="review-btn" ' + (jobRunning ? 'disabled' : '') + '>Review</button></div>';
   }
   if (s.job.kind === 'review' && s.job.log.length) {
+    if (jobRunning) html += '<div class="working-row"><span class="spinner-small"></span>Working...</div>';
     html += '<div class="job-log">' + esc(s.job.log.join('\n')) + '</div>';
   }
   html += '</div>';
@@ -207,6 +239,7 @@ function renderPendingReview(s) {
       '<div class="deploy-desc">Staging now matches <code>' + esc(s.origin_commit) + '</code> and has been reviewed. This deploys to all live clients.</div>' +
       '<button class="act success" id="deploy-btn" ' + (jobRunning ? 'disabled' : '') + '>Approve and deploy</button>';
     if (s.job.kind === 'deploy' && s.job.log.length) {
+      if (jobRunning) html += '<div class="working-row"><span class="spinner-small"></span>Working...</div>';
       html += '<div class="job-log">' + esc(s.job.log.join('\n')) + '</div>';
     }
     html += '</div>';
@@ -218,6 +251,11 @@ function renderPendingReview(s) {
   if (reviewBtn) reviewBtn.addEventListener('click', doReview);
   const deployBtn = document.getElementById('deploy-btn');
   if (deployBtn) deployBtn.addEventListener('click', doDeploy);
+
+  // innerHTML replacement above resets scroll position to the top on every
+  // poll (every 1.5s while a job runs) -- pin these to their bottom instead,
+  // since that's where new log lines actually appear.
+  el.querySelectorAll('.job-log').forEach(log => { log.scrollTop = log.scrollHeight; });
 }
 
 function renderHealth(h) {
@@ -316,12 +354,62 @@ async function refresh() {
     clearInterval(jobPollTimer);
     jobPollTimer = null;
   }
+
+  if (pendingStagingTab && s.job.kind === 'review' && s.job.state !== 'running') {
+    const tab = pendingStagingTab;
+    pendingStagingTab = null;
+    if (s.job.state === 'done') {
+      stagingReachable().then(ok => {
+        if (ok) {
+          tab.location.href = STAGING_URL;
+        } else if (tab.document) {
+          // Backend confirms staging-web is healthy, but this browser
+          // can't reach it -- almost always the :8443 SSH tunnel (separate
+          // from this console's own :5252 tunnel) has died. Say so instead
+          // of letting the tab hard-navigate into Chrome's native
+          // "site can't be reached" page with no next step.
+          const msg = tab.document.getElementById('msg');
+          if (msg) msg.innerHTML = 'Staging is up, but this browser can\'t reach it.<br>Your SSH tunnel for :8443 is probably down -- re-run:<br><code style="opacity:0.9">ssh -L 8443:127.0.0.1:8443 sandbox</code><br>then reload this tab.';
+          const spinner = tab.document.querySelector('.spinner');
+          if (spinner) spinner.style.display = 'none';
+        }
+      });
+    } else if (tab.document) {
+      // error state -- staging didn't come up healthy in time. Don't
+      // silently redirect into the same broken page; say so instead.
+      const msg = tab.document.getElementById('msg');
+      if (msg) msg.textContent = 'Staging did not come back up cleanly -- check the Pending review log on this page before retrying.';
+    }
+  }
+}
+
+async function stagingReachable() {
+  // The backend confirming staging-web is healthy only means the sandbox's
+  // *internal* network can reach it -- says nothing about whether this
+  // browser's own SSH tunnel for :8443 is still up (it's a separate tunnel
+  // from the one carrying this admin console's own :5252, and has been
+  // observed to silently die independently, e.g. across a sandbox
+  // idle-stop/restart). 'no-cors' mode avoids a CORS error masking the
+  // real signal we want: whether the network request itself lands at all.
+  try {
+    await fetch(STAGING_URL, { mode: 'no-cors', cache: 'no-store' });
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 async function doReview() {
   // window.open must run synchronously, before any await, or the browser
-  // no longer treats it as tied to the click and blocks the popup.
-  window.open(STAGING_URL, '_blank', 'noopener');
+  // no longer treats it as tied to the click and blocks the popup. Can't
+  // use 'noopener' here (unlike the plain "Open staging" link) -- that
+  // flag makes window.open() return null, and we need the reference to
+  // redirect this tab once staging is actually confirmed back up.
+  pendingStagingTab = window.open('', '_blank');
+  if (pendingStagingTab) {
+    pendingStagingTab.document.write(WAITING_PAGE_HTML);
+    pendingStagingTab.document.close();
+  }
   await fetch('/api/review', { method: 'POST' });
   refresh();
 }
@@ -330,6 +418,23 @@ async function doDeploy() {
   await fetch('/api/deploy', { method: 'POST' });
   refresh();
 }
+
+async function checkNow() {
+  const btn = document.getElementById('check-now-btn');
+  btn.disabled = true;
+  const prevLabel = btn.textContent;
+  btn.textContent = 'Checking...';
+  try {
+    await fetch('/api/check-now', { method: 'POST' });
+  } catch (e) {
+    // fall through -- refresh() below will surface last_fetch_error if any
+  }
+  await refresh();
+  btn.disabled = false;
+  btn.textContent = prevLabel;
+}
+
+document.getElementById('check-now-btn').addEventListener('click', checkNow);
 
 refresh();
 loadRecentChanges();

@@ -269,7 +269,19 @@ def api_git_status():
                 added, removed = parts[0], parts[1]
         files.append({"code": code or "?", "path": path, "added": added, "removed": removed})
 
-    return jsonify({"repo": os.path.basename(ADDONS_DIR), "files": files})
+    # "Save Changes" is a local commit only (see api_save_changes) -- it
+    # correctly empties this endpoint's uncommitted-files list, but that
+    # used to make the frontend treat the repo as fully idle and hide
+    # Send for Review entirely, even though there's now a real local
+    # commit on main waiting to be pushed. ahead_count is what lets the
+    # frontend tell "nothing to do" apart from "saved, not yet sent."
+    ahead = _git(["rev-list", "--count", "origin/main..HEAD"])
+    try:
+        ahead_count = int(ahead.stdout.strip())
+    except ValueError:
+        ahead_count = 0
+
+    return jsonify({"repo": os.path.basename(ADDONS_DIR), "files": files, "ahead_count": ahead_count})
 
 
 CONTEXT_LINES = 3
@@ -372,12 +384,31 @@ def api_send_for_review():
         return jsonify({"error": "Describe what changed before sending -- a few words is enough."}), 400
 
     status = _git(["status", "--porcelain"])
-    if not status.stdout.strip():
+    dirty = bool(status.stdout.strip())
+    ahead = _git(["rev-list", "--count", "origin/main..HEAD"])
+    try:
+        ahead_count = int(ahead.stdout.strip())
+    except ValueError:
+        ahead_count = 0
+    # Empty status alone doesn't mean "nothing to do" -- Save Changes (a
+    # local commit, see api_save_changes) empties this exact check while
+    # leaving real commits sitting ahead of origin/main that still need
+    # pushing. Only actually nothing to send if there's neither
+    # uncommitted work nor unpushed commits.
+    if not dirty and ahead_count == 0:
         return jsonify({"error": "Nothing to send."}), 400
 
     branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
     if branch != "main":
         _git(["checkout", "main"])
+
+    if ahead_count > 0:
+        # Collapse any prior Save Changes checkpoints (generic "manual
+        # save" commits) back into working-tree changes, so the one
+        # commit that actually gets pushed carries the real description
+        # just typed here, not a placeholder. Soft reset keeps every file
+        # change intact, only undoes the commits themselves.
+        _git(["reset", "--soft", "origin/main"])
 
     _git(["add", "-A"])
     commit = _git(["commit", "-m", message])

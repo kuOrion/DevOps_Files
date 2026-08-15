@@ -334,6 +334,18 @@ def api_deploy():
     return jsonify({"ok": True})
 
 
+@app.route("/api/check-now", methods=["POST"])
+def api_check_now():
+    # On-demand counterpart to the 45s background fetch loop -- lets the
+    # admin force an immediate check instead of waiting up to
+    # FETCH_INTERVAL_SECONDS for a just-sent commit to show up.
+    try:
+        _refresh_state(do_fetch=True)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
 @app.route("/api/recent-changes")
 def api_recent_changes():
     # Same query Git Console's own /api/recent-sends already uses --
