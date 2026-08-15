@@ -180,6 +180,12 @@ RES_COMPANY_ALLOWED = {
 KNOWN_DESTINATIONS = {
     ("hr_payslip", "name"),
     ("account_move", "l10n_in_gstin"),
+    ("account_move", "narration"),  # found via orion_test (2026-08-15, real-production
+    # sanitize pipeline's first run): auto-generated payslip note text,
+    # e.g. "<p>Payslip of Akhil Krishnan</p>" -- free-text HTML, same
+    # shape as calendar_event.description/crm_lead.description below,
+    # safe for splice-replace (preserves markup, only substitutes the
+    # matched name)
     ("account_move_line", "name"),
     ("calendar_event", "description"),
     ("calendar_event", "name"),
