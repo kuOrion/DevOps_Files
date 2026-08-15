@@ -224,6 +224,10 @@ KNOWN_DESTINATIONS = {
     ("mailing_contact", "email_normalized"),
     ("mailing_contact", "name"),
     ("mrp_production", "customer_name"),
+    ("product_template", "description"),  # found via orion-internal (2026-08-15):
+    # free-text HTML, e.g. "<p>Courier Charges from mentioned supplier end to
+    # Kaustubha Udyog, Pune</p>" -- same shape as calendar_event.description/
+    # account_move.narration above, safe for splice-replace
     ("project_project", "description"),
     ("project_task", "description"),
     ("project_task", "name"),
@@ -313,6 +317,16 @@ EXCLUDE_DESTINATIONS = {
     ("survey_question", "title"),
     ("survey_question_answer", "value"),
     ("survey_user_input_line", "value_char_box"),
+    # found via orion-internal (2026-08-15):
+    ("sale_order_line", "tag_material_code"),  # internal material/product code
+    # list, not identity -- same class as sale_order_line.name/
+    # product_template.default_code above
+    ("res_partner", "phone"),  # already transformed by write_pass.py's own
+    # canonical ORM write (confirmed via pipeline log). Flagged value is
+    # the already-synthetic phone number, coincidentally containing a
+    # digit run that matches a different partner's raw number in the
+    # hunt-set -- same false-positive class as
+    # account_analytic_account.name above, not an actual leak.
 }
 
 EXCLUDE_TABLES_PREFIX = ("ir_", "base_import_")  # framework/technical, not business data
