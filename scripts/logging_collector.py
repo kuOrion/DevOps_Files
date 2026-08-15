@@ -491,6 +491,9 @@ AUTH_LOG = "/var/log/auth.log"
 SSH_IDENTITY_BY_FINGERPRINT = {
     "SHA256:N+Y4UXM4BB8w3z132yDimx2vmY4vF09p5lzEPel9dsw": "erp16-sandbox-key",
     "SHA256:BeV7GBw1B654Z2mCR/w1nKnURciU7ZNNhazknx2IOUo": "sachin-admin",
+    # Real production's sole authorized key (confirmed via ~/.ssh/authorized_keys, 2026-08-15) --
+    # only entry needed for now since production has exactly one key authorized.
+    "SHA256:l5yIIbOuU3whTQojL3YXsLV45aocPgxZ1jbwP+r16sM": "Things_board-production-key",
 }
 
 _SYSLOG_LINE_RE = re.compile(
@@ -517,7 +520,14 @@ _SUDO_COMMAND_RE = re.compile(
     r"^\s*(?P<user>\S+)\s*:.*PWD=(?P<pwd>\S+)\s*;\s*USER=(?P<target>\S+)\s*;\s*COMMAND=(?P<command>.*)$"
 )
 
-_HOST_TZ = timezone(timedelta(hours=5, minutes=30))  # sandbox host is Asia/Kolkata -- confirmed live, 2026-08-06
+_HOST_TZ = datetime.now().astimezone().tzinfo  # the host's actual OS timezone, read dynamically --
+# HAProxy/auth.log both stamp raw lines in whatever the local system clock says, which is NOT
+# consistent across environments (sandbox: Asia/Kolkata/IST; real production: Etc/UTC, confirmed
+# live 2026-08-15) -- hardcoding IST here was a real bug caught before real-prod deployment, since
+# it would have mislabeled already-UTC production timestamps as IST and shifted every HAProxy/SSH
+# entry by 5:30 in the wrong direction. Still converts to canonical UTC below, same as every other
+# source's ts field (_now_iso) -- this only fixes *interpreting* the raw timestamp correctly, it
+# does not change the storage format, which stays UTC everywhere for cross-source correlation.
 
 
 def _syslog_ts_to_iso(mon, day, time_str):
@@ -913,14 +923,19 @@ _EXPECTED_PROCESS = {
 _AUDIT_TOOL_RE = re.compile(r"\b(psql|test)\b")
 
 # Confirmed live via `systemctl list-units --type=service --state=running`
-# (2026-08-06) -- stock Ubuntu/Docker/AWS-SSM services plus this collector
-# itself. Extend when a real new service is intentionally added; anything
+# (2026-08-06 sandbox, cross-checked against real production 2026-08-15 --
+# production additionally runs haproxy.service, predating this project, and
+# packagekit.service, a stock Ubuntu package not present on the sandbox
+# image; both added here since they're genuinely expected, not gaps) --
+# stock Ubuntu/Docker/AWS-SSM services plus this collector itself and
+# HAProxy. Extend when a real new service is intentionally added; anything
 # else running is exactly what this check exists to catch.
 KNOWN_SYSTEMD_UNITS = {
     "acpid.service", "chrony.service", "containerd.service", "cron.service",
     "dbus.service", "docker.service", "erp16-logging-collector.service",
-    "getty@tty1.service", "irqbalance.service", "multipathd.service",
-    "networkd-dispatcher.service", "polkit.service", "rsyslog.service",
+    "getty@tty1.service", "haproxy.service", "irqbalance.service",
+    "multipathd.service", "networkd-dispatcher.service",
+    "packagekit.service", "polkit.service", "rsyslog.service",
     "serial-getty@ttyS0.service",
     "snap.amazon-ssm-agent.amazon-ssm-agent.service", "snapd.service",
     "ssh.service", "systemd-fsckd.service", "systemd-hostnamed.service",
