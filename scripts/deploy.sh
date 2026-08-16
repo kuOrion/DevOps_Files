@@ -193,11 +193,14 @@ sync_earthmech_release() {
 
     mkdir -p "$EARTHMECH_SYNC_CHECKOUT/modules"
 
-    # Bootstrap: repo has no commits yet -- write the initial (today:
+    # Bootstrap: no manifest yet (checked directly, not "repo has no
+    # commits" -- a repo can have unrelated commits, e.g. a manual
+    # connectivity-test commit, without this mechanism ever having run;
+    # found live on the very first real run). Writes the initial (today:
     # empty-modules) manifest unconditionally, once, so install_release.sh
     # always has at least one real tag to check out, even before any
     # module is ever added.
-    if ! git -C "$EARTHMECH_SYNC_CHECKOUT" rev-parse HEAD >/dev/null 2>&1; then
+    if [ ! -f "$EARTHMECH_SYNC_CHECKOUT/RELEASE_MANIFEST.yaml" ]; then
         echo "=== [earthmech] bootstrapping empty release (stock Odoo only) ==="
         write_earthmech_manifest "$live_commit" "$modules"
         git -C "$EARTHMECH_SYNC_CHECKOUT" add -A
