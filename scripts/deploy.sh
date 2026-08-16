@@ -153,6 +153,133 @@ promote() {
     echo "=== promoted: $before -> $after ==="
 }
 
+# --- earthmech release sync: mirrors whichever modules clients.yaml's
+# earthmech.modules lists (only ones already proven live on cloud clients,
+# by construction -- a module only gets added to that list after it's
+# been through a normal cloud deploy) into the separate, scoped
+# earthmech-release repo. Never pushes the full monorepo -- Deployment_
+# Lifecycle.docx Sec.3 Tier 2 requires a scoped remote containing only
+# that client's own module set, not a clone of everything.
+#
+# Runs automatically after every successful cloud deploy, but is a true
+# no-op (no commit, no push) unless the mirrored content actually
+# changed -- earthmech.modules is empty today (stock Odoo only, settled
+# 2026-08-14), so in practice this does nothing on ordinary deploys until
+# someone actually adds a module to that list.
+EARTHMECH_SYNC_CHECKOUT="$HOME/Earthmech_release_sync"
+EARTHMECH_RELEASE_REMOTE="git@github-earthmech:kuOrion/earthmech-release.git"
+
+earthmech_modules() {
+    python3 -c "
+import yaml
+cfg = yaml.safe_load(open('$CLIENTS_YAML'))['clients'].get('earthmech', {})
+for m in cfg.get('modules', []) or []:
+    print(m)
+"
+}
+
+sync_earthmech_release() {
+    local live_commit="$1"
+    local modules; modules=$(earthmech_modules)
+
+    if [ ! -d "$EARTHMECH_SYNC_CHECKOUT/.git" ]; then
+        echo "=== [earthmech] cloning earthmech-release (first run) ==="
+        git clone "$EARTHMECH_RELEASE_REMOTE" "$EARTHMECH_SYNC_CHECKOUT"
+    else
+        git -C "$EARTHMECH_SYNC_CHECKOUT" fetch origin
+        git -C "$EARTHMECH_SYNC_CHECKOUT" checkout main
+        git -C "$EARTHMECH_SYNC_CHECKOUT" reset --hard origin/main 2>/dev/null || true
+    fi
+
+    mkdir -p "$EARTHMECH_SYNC_CHECKOUT/modules"
+
+    # Bootstrap: repo has no commits yet -- write the initial (today:
+    # empty-modules) manifest unconditionally, once, so install_release.sh
+    # always has at least one real tag to check out, even before any
+    # module is ever added.
+    if ! git -C "$EARTHMECH_SYNC_CHECKOUT" rev-parse HEAD >/dev/null 2>&1; then
+        echo "=== [earthmech] bootstrapping empty release (stock Odoo only) ==="
+        write_earthmech_manifest "$live_commit" "$modules"
+        git -C "$EARTHMECH_SYNC_CHECKOUT" add -A
+        git -C "$EARTHMECH_SYNC_CHECKOUT" -c user.email=deploy@erp16.local -c user.name=erp16-deploy \
+            commit -m "initial release: stock Odoo only, no custom modules"
+        local tag="earthmech-$(git -C "$LIVE_WORKTREE" rev-parse --short "$live_commit")"
+        git -C "$EARTHMECH_SYNC_CHECKOUT" tag "$tag"
+        git -C "$EARTHMECH_SYNC_CHECKOUT" push origin main "$tag"
+        echo "=== [earthmech] bootstrap pushed, tagged $tag ==="
+        write_earthmech_sync_log "bootstrapped" "$tag" ""
+        return 0
+    fi
+
+    if [ -z "$modules" ]; then
+        echo "=== [earthmech] no modules configured -- nothing to sync ==="
+        return 0
+    fi
+
+    # Mirror each configured module's current content in from the live
+    # worktree -- rsync --delete scoped to just that module's own
+    # directory, so a file removed upstream is also removed here, without
+    # touching any other module's directory.
+    local m
+    for m in $modules; do
+        rsync -a --delete "$LIVE_WORKTREE/$m/" "$EARTHMECH_SYNC_CHECKOUT/modules/$m/"
+    done
+
+    git -C "$EARTHMECH_SYNC_CHECKOUT" add -A
+    if git -C "$EARTHMECH_SYNC_CHECKOUT" diff --cached --quiet; then
+        echo "=== [earthmech] modules unchanged -- nothing to sync ==="
+        return 0
+    fi
+
+    write_earthmech_manifest "$live_commit" "$modules"
+    git -C "$EARTHMECH_SYNC_CHECKOUT" add -A
+
+    local tag="earthmech-$(git -C "$LIVE_WORKTREE" rev-parse --short "$live_commit")"
+    echo "=== [earthmech] modules changed -- committing + tagging $tag ==="
+    git -C "$EARTHMECH_SYNC_CHECKOUT" -c user.email=deploy@erp16.local -c user.name=erp16-deploy \
+        commit -m "sync: $(echo "$modules" | tr '\n' ' ') @ $live_commit"
+    git -C "$EARTHMECH_SYNC_CHECKOUT" tag "$tag"
+    git -C "$EARTHMECH_SYNC_CHECKOUT" push origin main "$tag"
+    echo "=== [earthmech] pushed, tagged $tag ==="
+    write_earthmech_sync_log "synced" "$tag" "$modules"
+}
+
+write_earthmech_manifest() {
+    local live_commit="$1" modules="$2"
+    EM_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" EM_COMMIT="$live_commit" EM_MODULES="$modules" \
+    python3 -c "
+import yaml, os
+manifest = {
+    'odoo_version': '16.0',
+    'postgres_version': '14.15',
+    'source_commit': os.environ['EM_COMMIT'],
+    'synced_at': os.environ['EM_TS'],
+    'modules': os.environ['EM_MODULES'].split(),
+}
+with open('$EARTHMECH_SYNC_CHECKOUT/RELEASE_MANIFEST.yaml', 'w') as f:
+    yaml.safe_dump(manifest, f, sort_keys=False)
+"
+}
+
+write_earthmech_sync_log() {
+    local result="$1" tag="$2" modules="$3"
+    mkdir -p "$DEPLOY_LOG_DIR"
+    local logfile="$DEPLOY_LOG_DIR/$(date -u +%Y-%m-%d).jsonl"
+    EM_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" EM_RESULT="$result" EM_TAG="$tag" EM_MODULES="$modules" \
+    python3 -c "
+import json, os
+entry = {
+    'ts': os.environ['EM_TS'],
+    'source': 'earthmech_sync',
+    'level': 'audit',
+    'result': os.environ['EM_RESULT'],
+    'tag': os.environ['EM_TAG'],
+    'modules': os.environ['EM_MODULES'].split(),
+}
+print(json.dumps(entry))
+" >> "$logfile"
+}
+
 http_port_for() {
     python3 -c "
 import yaml
@@ -310,6 +437,9 @@ full_deploy() {
     if [ -z "$failed" ]; then
         echo "=== DEPLOY SUCCEEDED: all clients healthy on $target ==="
         write_deploy_log "success" "$target" "$previous_commit" "$clients" "" "$(( $(date +%s) - start_ts ))"
+        echo
+        echo "--- earthmech release sync (only fires if configured modules changed) ---"
+        sync_earthmech_release "$target" || echo "=== [earthmech] sync failed -- does NOT affect the cloud deploy above, investigate separately ==="
         return 0
     fi
 
@@ -345,6 +475,12 @@ case "${1:-}" in
     healthcheck)
         [ -n "${2:-}" ] || fail "Usage: $0 healthcheck <client_id>"
         restart_and_check "$2"
+        ;;
+    sync-earthmech)
+        # Standalone entry point, same function full_deploy calls
+        # automatically on success -- for testing/re-running the sync in
+        # isolation without needing a full cloud deploy each time.
+        sync_earthmech_release "$(git -C "$LIVE_WORKTREE" rev-parse HEAD)"
         ;;
     rollback)
         [ -n "${3:-}" ] || fail "Usage: $0 rollback <client_id> <backup_dir>"
