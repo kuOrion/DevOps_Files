@@ -57,7 +57,12 @@ for CLIENT_ID in "${CLIENTS[@]}"; do
     fi
 
     echo "=== [$CLIENT_ID] publish ==="
-    if ! bash "$BUILD_DIR/scripts/publish_snapshot.sh" "$CLIENT_ID" --local --aws-profile sanitize-publish; then
+    # No --aws-profile: publish_snapshot.sh defaults to the real bucket +
+    # empty profile now (2026-08-17), picked up automatically via this
+    # box's own instance role (EC2-SSM-Execution-Role, extended with scoped
+    # S3 access) -- the temporary sanitize-publish static credential this
+    # used to need is retired, superseded by the real permanent fix.
+    if ! bash "$BUILD_DIR/scripts/publish_snapshot.sh" "$CLIENT_ID" --local; then
         echo "=== [$CLIENT_ID] FAILED at publish ==="
         FAILED_CLIENTS+=("$CLIENT_ID")
         continue

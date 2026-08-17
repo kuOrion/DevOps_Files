@@ -36,6 +36,11 @@ ADDONS_PATH="$(dirname "$BUILD_DIR")/erp16-custom-addons"
 # so an empty exported value confuses it on its own.
 AWS_PROFILE="erp16-sandbox"
 AWS_REGION="ap-south-1"
+# Sandbox bucket stays the default so this script keeps working unchanged
+# for continued rehearsal use -- real production usage (via Git Console's
+# DEV_CONSOLE_AWS_PROFILE) passes --bucket explicitly alongside a real
+# --aws-profile, same threading pattern as the profile itself.
+S3_BUCKET="erp16-sandbox-snapshots"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -43,6 +48,7 @@ while [ $# -gt 0 ]; do
         --down) DOWN=true ;;
         --addons-path) ADDONS_PATH="$2"; shift ;;
         --aws-profile) AWS_PROFILE="$2"; shift ;;
+        --bucket) S3_BUCKET="$2"; shift ;;
         *) echo "ERROR: unknown argument '$1'" >&2; exit 1 ;;
     esac
     shift
@@ -104,7 +110,7 @@ if [ "$REFRESH" = true ] || [ ! -f "$SNAPSHOT_DIR/db.dump" ]; then
     echo "=== Pulling sanitized snapshot from S3 ==="
     _t0=$(now)
     mkdir -p "$SNAPSHOT_DIR"
-    S3_PREFIX="s3://erp16-sandbox-snapshots/sanitized/${CLIENT_ID}/latest"
+    S3_PREFIX="s3://${S3_BUCKET}/sanitized/${CLIENT_ID}/latest"
     aws s3 cp "$S3_PREFIX/db.dump" "$SNAPSHOT_DIR/db.dump" --profile "$AWS_PROFILE" --region "$AWS_REGION"
     aws s3 cp "$S3_PREFIX/filestore.tar.gz" "$SNAPSHOT_DIR/filestore.tar.gz" --profile "$AWS_PROFILE" --region "$AWS_REGION"
     aws s3 cp "$S3_PREFIX/published_at.txt" "$SNAPSHOT_DIR/published_at.txt" --profile "$AWS_PROFILE" --region "$AWS_REGION"

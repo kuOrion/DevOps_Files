@@ -51,10 +51,20 @@ DEV_START = os.path.join(BUILD_DIR, "scripts", "dev-start.sh")
 # DRESS_REHEARSAL.md 2.6, sarthak-dev/priya-dev). Empty by default so
 # nothing changes for anyone who hasn't set this.
 DEV_CONSOLE_AWS_PROFILE = os.environ.get("DEV_CONSOLE_AWS_PROFILE", "")
+# Same threading pattern for the bucket itself -- dev-start.sh's default
+# (erp16-sandbox-snapshots) stays correct for continued rehearsal use;
+# real production usage sets this alongside DEV_CONSOLE_AWS_PROFILE to
+# point at the real bucket (orion-instruments-erp16-bucket, 2026-08-17).
+DEV_CONSOLE_S3_BUCKET = os.environ.get("DEV_CONSOLE_S3_BUCKET", "")
 
 
 def _aws_profile_args():
-    return ["--aws-profile", DEV_CONSOLE_AWS_PROFILE] if DEV_CONSOLE_AWS_PROFILE else []
+    args = []
+    if DEV_CONSOLE_AWS_PROFILE:
+        args += ["--aws-profile", DEV_CONSOLE_AWS_PROFILE]
+    if DEV_CONSOLE_S3_BUCKET:
+        args += ["--bucket", DEV_CONSOLE_S3_BUCKET]
+    return args
 
 app = Flask(__name__)
 

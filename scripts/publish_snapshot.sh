@@ -37,7 +37,12 @@ shift
 
 LOCAL_MODE=false
 SSH_HOST="sandbox"
-AWS_PROFILE="erp16-sandbox"
+# Empty by default -- real production's instance role (EC2-SSM-Execution-Role,
+# extended 2026-08-17 with scoped S3 read/write on the real bucket) is picked
+# up automatically by the default credential chain when --profile is omitted
+# entirely. Continued sandbox/rehearsal use should pass --aws-profile
+# erp16-sandbox explicitly now that this isn't the default.
+AWS_PROFILE=""
 AWS_REGION="ap-south-1"
 
 while [ $# -gt 0 ]; do
@@ -58,7 +63,7 @@ if [ "$SANITIZED_DB_NAME" = "${CLIENT_ID}_san" ] && [ "$CLIENT_ID" != "orion_tes
     echo "WARNING: no explicit sanitized-db mapping for '$CLIENT_ID' in pipeline_clients.sh -- assuming '${SANITIZED_DB_NAME}'. Confirm this matches what run_pipeline.sh actually created." >&2
 fi
 
-BUCKET="erp16-sandbox-snapshots"
+BUCKET="orion-instruments-erp16-bucket"
 S3_PREFIX="s3://${BUCKET}/sanitized/${CLIENT_ID}/latest"
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -97,13 +102,19 @@ else
     ssh "$SSH_HOST" "rm -f /tmp/publish_${CLIENT_ID}.dump /tmp/publish_${CLIENT_ID}_filestore.tar.gz; docker exec sanitize-web rm -f /tmp/publish_${CLIENT_ID}_filestore.tar.gz"
 fi
 
-echo "=== Uploading to ${S3_PREFIX} (profile: ${AWS_PROFILE}) ==="
+# Same "omit --profile entirely when empty" convention already used by
+# render_client.py's _aws_cmd -- an explicit --profile "" confuses the aws
+# CLI rather than falling back cleanly, so build the flag array conditionally.
+AWS_PROFILE_ARGS=()
+[ -n "$AWS_PROFILE" ] && AWS_PROFILE_ARGS=(--profile "$AWS_PROFILE")
+
+echo "=== Uploading to ${S3_PREFIX} (profile: ${AWS_PROFILE:-<instance role / default chain>}) ==="
 date -u +%Y-%m-%dT%H:%M:%SZ > "$WORKDIR/published_at.txt"
 echo "$SANITIZED_DB_NAME" > "$WORKDIR/source_db.txt"
-aws s3 cp "$WORKDIR/db.dump" "${S3_PREFIX}/db.dump" --profile "$AWS_PROFILE" --region "$AWS_REGION"
-aws s3 cp "$WORKDIR/filestore.tar.gz" "${S3_PREFIX}/filestore.tar.gz" --profile "$AWS_PROFILE" --region "$AWS_REGION"
-aws s3 cp "$WORKDIR/published_at.txt" "${S3_PREFIX}/published_at.txt" --profile "$AWS_PROFILE" --region "$AWS_REGION"
-aws s3 cp "$WORKDIR/source_db.txt" "${S3_PREFIX}/source_db.txt" --profile "$AWS_PROFILE" --region "$AWS_REGION"
+aws s3 cp "$WORKDIR/db.dump" "${S3_PREFIX}/db.dump" "${AWS_PROFILE_ARGS[@]}" --region "$AWS_REGION"
+aws s3 cp "$WORKDIR/filestore.tar.gz" "${S3_PREFIX}/filestore.tar.gz" "${AWS_PROFILE_ARGS[@]}" --region "$AWS_REGION"
+aws s3 cp "$WORKDIR/published_at.txt" "${S3_PREFIX}/published_at.txt" "${AWS_PROFILE_ARGS[@]}" --region "$AWS_REGION"
+aws s3 cp "$WORKDIR/source_db.txt" "${S3_PREFIX}/source_db.txt" "${AWS_PROFILE_ARGS[@]}" --region "$AWS_REGION"
 
 echo "=== Published: ${S3_PREFIX} ==="
 du -sh "$WORKDIR/db.dump" "$WORKDIR/filestore.tar.gz"
