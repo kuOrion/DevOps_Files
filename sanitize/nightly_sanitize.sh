@@ -43,14 +43,19 @@ sleep 10
 for CLIENT_ID in "${CLIENTS[@]}"; do
     echo
     echo "=== [$CLIENT_ID] pull ==="
-    if ! bash "$BUILD_DIR/scripts/pull_from_live.sh" "$CLIENT_ID" "$RAW_BASE/$CLIENT_ID"; then
+    # Runs as the narrow erp16-puller OS user (2026-08-20), which can only
+    # ever reach live-*-db/live-*-web containers per its own sudoers rules
+    # -- not sanitize-db/sanitize-web, not anything else on the box.
+    if ! sudo -u erp16-puller bash "$BUILD_DIR/scripts/pull_from_live.sh" "$CLIENT_ID" "$RAW_BASE/$CLIENT_ID"; then
         echo "=== [$CLIENT_ID] FAILED at pull -- skipping ==="
         FAILED_CLIENTS+=("$CLIENT_ID")
         continue
     fi
 
     echo "=== [$CLIENT_ID] sanitize ==="
-    if ! bash "$BUILD_DIR/sanitize/run_pipeline.sh" "$CLIENT_ID"; then
+    # Runs as the narrow erp16-sanitizer OS user, which can only ever
+    # reach sanitize-db/sanitize-web -- not any live-* container.
+    if ! sudo -u erp16-sanitizer bash "$BUILD_DIR/sanitize/run_pipeline.sh" "$CLIENT_ID"; then
         echo "=== [$CLIENT_ID] FAILED at sanitize -- not publishing, skipping ==="
         FAILED_CLIENTS+=("$CLIENT_ID")
         continue

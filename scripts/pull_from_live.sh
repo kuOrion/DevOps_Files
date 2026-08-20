@@ -25,6 +25,14 @@
 # Usage: pull_from_live.sh <client_id> <dest_dir>
 set -euo pipefail
 
+# Meant to run as the narrow erp16-puller OS user (2026-08-20 -- see
+# /etc/sudoers.d/erp16-narrow-users), which deliberately isn't in the
+# docker group, so every `docker` call below needs to go through sudo for
+# the narrow per-container sudoers rules to have any effect. Shadowing
+# the command name here means every existing call site below picks this
+# up automatically, without needing every individual line touched.
+docker() { command sudo /usr/bin/docker "$@"; }
+
 CLIENT_ID="${1:?Usage: pull_from_live.sh <client_id> <dest_dir>}"
 DEST_DIR="${2:?Usage: pull_from_live.sh <client_id> <dest_dir>}"
 

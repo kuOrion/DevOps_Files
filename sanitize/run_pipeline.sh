@@ -19,6 +19,14 @@
 # silent-failure incident this guards against. Still true.
 set -euo pipefail
 
+# Meant to run as the narrow erp16-sanitizer OS user (2026-08-20 -- see
+# /etc/sudoers.d/erp16-narrow-users), which deliberately isn't in the
+# docker group, so every `docker` call below needs to go through sudo for
+# the narrow per-container sudoers rules to have any effect. Shadowing
+# the command name here means every existing call site below picks this
+# up automatically, without needing every individual line touched.
+docker() { command sudo /usr/bin/docker "$@"; }
+
 CLIENT_ID="${1:-orion_test}"
 PIPELINE_START=$(date +%s)
 
