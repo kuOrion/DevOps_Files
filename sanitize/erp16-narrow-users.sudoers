@@ -1,0 +1,32 @@
+# erp16-puller: only ever touches live-<client>-db / live-<client>-web
+# containers (per pull_from_live.sh's own container-naming convention) --
+# these patterns can never match sanitize-db/sanitize-web/staging-*, so
+# the OS itself blocks any attempt to reach them regardless of intent.
+# Both flagged and unflagged docker-exec forms listed explicitly --
+# sudoers globbing has no "optional token" syntax, and pull_from_live.sh
+# never actually uses exec flags, but listing both is cheap insurance.
+# docker cp needs both directions -- container:path as source (filestore
+# pull back to host) and as destination (none currently used by
+# pull_from_live.sh, kept for symmetry/future use).
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker ps *
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker exec live-*-db *
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker exec live-*-web *
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker exec * live-*-db *
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker exec * live-*-web *
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker cp * live-*-web\:*
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker cp live-*-web\:* *
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker compose -f /home/ubuntu/DevOps_Files/generated/live/*/docker-compose.yml up -d db
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker compose -f /home/ubuntu/DevOps_Files/generated/live/*/docker-compose.yml stop db
+erp16-puller ALL=(root) NOPASSWD: /usr/bin/docker run --rm -v live-*_odoo-web-data\:/data\:ro -v /opt/erp16/raw/*\:/dest alpine\:3 sh -c *
+
+# erp16-sanitizer: only ever touches sanitize-db / sanitize-web -- fixed
+# names, never client-specific -- per run_pipeline.sh's own confirmed
+# usage (read in full, 2026-08-20: never references live-* at all).
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker exec sanitize-db *
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker exec sanitize-web *
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker exec * sanitize-db *
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker exec * sanitize-web *
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker cp * sanitize-db\:*
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker cp * sanitize-web\:*
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker cp sanitize-db\:* *
+erp16-sanitizer ALL=(root) NOPASSWD: /usr/bin/docker cp sanitize-web\:* *
