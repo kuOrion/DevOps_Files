@@ -491,9 +491,12 @@ AUTH_LOG = "/var/log/auth.log"
 SSH_IDENTITY_BY_FINGERPRINT = {
     "SHA256:N+Y4UXM4BB8w3z132yDimx2vmY4vF09p5lzEPel9dsw": "erp16-sandbox-key",
     "SHA256:BeV7GBw1B654Z2mCR/w1nKnURciU7ZNNhazknx2IOUo": "sachin-admin",
-    # Real production's sole authorized key (confirmed via ~/.ssh/authorized_keys, 2026-08-15) --
-    # only entry needed for now since production has exactly one key authorized.
     "SHA256:l5yIIbOuU3whTQojL3YXsLV45aocPgxZ1jbwP+r16sM": "Things_board-production-key",
+    # Admin's own personal key, added 2026-08-17 per the SSH lockdown plan
+    # (docs/rehearsal/NEW_ARCHITECTURE_SECURITY_CHECKLIST.md) -- found
+    # showing up as "unknown:<fingerprint>" during the 2026-08-20 log
+    # review despite being legitimate, successful admin activity.
+    "SHA256:7ETlW0r+Zn6bCXM3nJDmqJM2cQZWn39wDSbi2L5w1Po": "admin-orion-instruments",
 }
 
 _SYSLOG_LINE_RE = re.compile(
