@@ -45,6 +45,20 @@ services:
     volumes:
       - odoo-web-data:/var/lib/odoo
       - {{ addons_host_path }}:/mnt/extra-addons
+{% if addons_source_path %}
+      # --scope-addons mode: addons_host_path above is a directory of
+      # symlinks pointing at absolute host paths under addons_source_path
+      # (e.g. /home/ubuntu/Live_copy_of_Addons/orion_sales). Those targets
+      # only resolve if this exact host path is ALSO reachable inside the
+      # container at the same absolute path -- otherwise every symlink is
+      # dangling from the container's own mount namespace even though it
+      # looks fine from the host (found live, 2026-08-27: Odoo logged
+      # "not installable, skipped" for every real installed custom module
+      # on puna_eye_care until this second mount was added). Read-only --
+      # this mount exists purely so absolute symlink targets resolve, the
+      # container should never write through it.
+      - {{ addons_source_path }}:{{ addons_source_path }}:ro
+{% endif %}
       - {{ config_host_path }}:/etc/odoo
     restart: unless-stopped
 {% if dev_mode %}

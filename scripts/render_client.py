@@ -257,9 +257,16 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     addons_mount_path = os.path.abspath(args.addons_path) if args.addons_path else None
+    addons_source_path = None
     if args.scope_addons and args.addons_path:
         check_dependency_closure(args.client_id, cfg, args.addons_path)
         addons_mount_path = build_addons_symlinks(args.client_id, cfg, args.addons_path, out_dir)
+        # The symlinks just built point at absolute paths under this --
+        # needs mounting into the container too, at this exact same path,
+        # or every symlink dangles inside the container's own mount
+        # namespace even though `ls` from the host looks completely fine
+        # (found live, 2026-08-27 -- see the template's own comment).
+        addons_source_path = os.path.abspath(args.addons_path)
 
     context = {
         "client_id": args.client_id,
@@ -281,6 +288,7 @@ def main():
         "longpolling_port": cfg["longpolling_port"],
         "docker_dir": DOCKER_DIR,
         "addons_host_path": addons_mount_path or "/CHANGE_ME/addons",
+        "addons_source_path": addons_source_path,
         "config_host_path": os.path.abspath(args.config_path) if args.config_path else os.path.join(out_dir, "config"),
         "db_password": db_password,
         "master_password": master_password,
