@@ -11,11 +11,14 @@ with a fresh random value on first use, matching the old local-only
 behavior's convenience.
 """
 import argparse
+import ast
 import os
 import secrets
+import shutil
 import string
 import subprocess
 import sys
+from pathlib import Path
 
 import yaml
 from jinja2 import Template
@@ -117,6 +120,81 @@ def validate_modules(client_id, cfg, addons_path):
         sys.exit(1)
 
 
+def _read_manifest_depends(module_dir):
+    """Best-effort read of a module's `depends` list from __manifest__.py.
+    Returns [] if the manifest is missing/unparseable rather than raising --
+    a module with a broken manifest is check_missing_deps.py's problem, not
+    this one's; we only care about the dependency graph here."""
+    manifest_path = os.path.join(module_dir, "__manifest__.py")
+    if not os.path.isfile(manifest_path):
+        return []
+    try:
+        tree = ast.parse(Path(manifest_path).read_text())
+        manifest = ast.literal_eval(tree.body[0].value) if isinstance(tree.body[0], ast.Expr) else None
+    except Exception:
+        return []
+    if not isinstance(manifest, dict):
+        return []
+    return manifest.get("depends", [])
+
+
+def check_dependency_closure(client_id, cfg, addons_path):
+    """Every module a client lists must have all its own `depends` also
+    present in that same list -- otherwise scoping the addons mount to
+    exactly this list (see build_addons_symlinks) would break that
+    module's install/upgrade with a real, confusing error, not just a
+    visibility question. clients.yaml's own comments claim these lists
+    were built by intersecting against `ir_module_module state=installed`,
+    which SHOULD already imply this (Odoo won't install something without
+    its deps also installed) -- but "should" and "verified" are different
+    things, so check for real rather than trust the comment. Modules that
+    live outside addons_path entirely (Odoo core, e.g. 'stock', 'sale')
+    are not this script's concern -- they're always on the core addons_path
+    regardless of this client's own custom-module list."""
+    if not addons_path:
+        return
+    modules = cfg.get("modules", [])
+    module_set = set(modules)
+    missing = {}
+    for m in modules:
+        module_dir = os.path.join(addons_path, m)
+        if not os.path.isdir(module_dir):
+            continue  # validate_modules() already reports this case
+        for dep in _read_manifest_depends(module_dir):
+            if dep in module_set:
+                continue
+            if not os.path.isdir(os.path.join(addons_path, dep)):
+                continue  # a core/base Odoo dependency, not a custom module
+            missing.setdefault(m, []).append(dep)
+    if missing:
+        print(f"ERROR: client '{client_id}' modules list is missing custom-module dependencies:", file=sys.stderr)
+        for m, deps in missing.items():
+            print(f"  - {m} depends on: {', '.join(deps)} (not in this client's modules list)", file=sys.stderr)
+        sys.exit(1)
+
+
+def build_addons_symlinks(client_id, cfg, addons_path, out_dir):
+    """Build a per-client directory of symlinks, one per module this client
+    actually has listed in clients.yaml, pointing back into the single
+    shared addons checkout -- so THIS client's container only ever sees
+    its own modules (Apps screen, module discovery) while the underlying
+    code storage stays exactly one shared worktree, one git history,
+    one `deploy.sh promote` for everyone. Rebuilt fresh every render so it
+    never drifts from clients.yaml's own module list. Returns the symlink
+    directory's absolute path, for use as the compose mount source instead
+    of the raw addons_path."""
+    links_dir = os.path.join(out_dir, "addons_links")
+    if os.path.isdir(links_dir):
+        shutil.rmtree(links_dir)
+    os.makedirs(links_dir)
+    for m in cfg.get("modules", []):
+        target = os.path.abspath(os.path.join(addons_path, m))
+        link = os.path.join(links_dir, m)
+        if os.path.isdir(target):
+            os.symlink(target, link)
+    return links_dir
+
+
 def render(template_name, context):
     with open(os.path.join(TEMPLATES_DIR, template_name)) as f:
         return Template(f.read()).render(**context)
@@ -143,6 +221,13 @@ def main():
                           "isolated from the sandbox's own stack, so its password never needs "
                           "to match the SSM-stored one -- confirmed live 2026-08-05, dev-start.sh "
                           "failed outright under a real scoped dev profile without this flag.")
+    ap.add_argument("--scope-addons", action="store_true",
+                     help="Mount only the modules this client actually lists in clients.yaml "
+                          "(via a generated symlink directory) instead of the entire shared "
+                          "addons checkout -- so this client's Apps screen only shows its own "
+                          "modules, not every custom module ever built for any client. Opt-in, "
+                          "default off: no behavior change for any existing caller (dev-start.sh, "
+                          "staging, sanitize) unless explicitly passed. 2026-08-27.")
     ap.add_argument("--dev-mode", action="store_true",
                      help="Set Odoo's dev_mode (reload,qweb,xml) so a saved addons edit gets "
                           "picked up automatically (Python auto-restarts, XML/qweb reload "
@@ -171,6 +256,11 @@ def main():
     out_dir = os.path.abspath(args.out or os.path.join(BUILD_DIR, "generated", args.client_id))
     os.makedirs(out_dir, exist_ok=True)
 
+    addons_mount_path = os.path.abspath(args.addons_path) if args.addons_path else None
+    if args.scope_addons and args.addons_path:
+        check_dependency_closure(args.client_id, cfg, args.addons_path)
+        addons_mount_path = build_addons_symlinks(args.client_id, cfg, args.addons_path, out_dir)
+
     context = {
         "client_id": args.client_id,
         "container_prefix": args.container_prefix,
@@ -190,7 +280,7 @@ def main():
         "http_port": cfg["http_port"],
         "longpolling_port": cfg["longpolling_port"],
         "docker_dir": DOCKER_DIR,
-        "addons_host_path": os.path.abspath(args.addons_path) if args.addons_path else "/CHANGE_ME/addons",
+        "addons_host_path": addons_mount_path or "/CHANGE_ME/addons",
         "config_host_path": os.path.abspath(args.config_path) if args.config_path else os.path.join(out_dir, "config"),
         "db_password": db_password,
         "master_password": master_password,
