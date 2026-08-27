@@ -30,8 +30,13 @@ clients:
     longpolling_port: 8072
     domain: erp16.orion-instruments.io   # 2026-08-15: real cutover, live -- the bare domain itself
                                # (not a subdomain, unlike every other client below)
-    secrets_ref: /erp16-sandbox/orion-internal   # sandbox SSM path prefix (see build/README.md); repointed at the
-                                        # client's real AWS account once milestone 2 is production-ready
+    secrets_ref: /erp16-production/orion-internal   # 2026-08-27: fixed -- this was still
+                                        # /erp16-sandbox/orion-internal, a stale path from before
+                                        # the real 2026-08-20 SSM migration, never actually
+                                        # repointed. The real db_password/master_password live
+                                        # under /erp16-production/<client>/ -- confirmed live,
+                                        # matches the values already baked into the running
+                                        # containers' compose files.
     modules:                  # verified 2026-07-31 via ir_module_module state='installed'
                                # intersected against addons/all/latest/ — validated at
                                # render/deploy time, don't hand-edit without re-checking
@@ -135,8 +140,8 @@ clients:
                                # Orion's own internal duplicate of orion-internal, not a separate
                                # external client (see ROADMAP.md's milestone 5 note), and the intent
                                # is tunnel-only long-term.
-    secrets_ref: /erp16-sandbox/orion_test   # sandbox SSM path prefix (see build/README.md); repointed at
-                                              # the client's real AWS account once milestone 2 is production-ready
+    secrets_ref: /erp16-production/orion_test   # 2026-08-27: fixed -- see orion-internal's
+                                              # entry above for the full story, same fix here.
     modules:                  # verified 2026-08-01 via ir_module_module state='installed'
                                # intersected against addons/all/latest/ — identical to orion-internal's list,
                                # confirming this really is a byte-for-byte duplicate
@@ -233,8 +238,8 @@ clients:
     http_port: 8079           # unique per client on one host - orion-internal already uses 8069
     longpolling_port: 8082
     domain: parusinstruments.erp16.orion-instruments.io   # 2026-08-15: real cutover, live
-    secrets_ref: /erp16-sandbox/parus_instruments   # sandbox SSM path prefix (see build/README.md); repointed at
-                                                     # the client's real AWS account once milestone 2 is production-ready
+    secrets_ref: /erp16-production/parus_instruments   # 2026-08-27: fixed -- see orion-internal's
+                                                     # entry above for the full story, same fix here.
     modules: []               # verified 2026-08-01 via ir_module_module state='installed' - core Odoo only,
                                # zero custom Orion modules installed for this client
     backup:
@@ -257,8 +262,8 @@ clients:
     http_port: 8099           # unique per client on one host
     longpolling_port: 8102
     domain: punaeyecare.erp16.orion-instruments.io   # 2026-08-15: real cutover, live
-    secrets_ref: /erp16-sandbox/puna_eye_care   # sandbox SSM path prefix (see build/README.md); repointed at
-                                                 # the client's real AWS account once milestone 2 is production-ready
+    secrets_ref: /erp16-production/puna_eye_care   # 2026-08-27: fixed -- see orion-internal's
+                                                 # entry above for the full story, same fix here.
     modules:                  # verified 2026-08-05 via ir_module_module state='installed' on production,
                                # intersected against addons/all/latest/ - full install has 121 modules, but
                                # only these are outside Odoo's own core/l10n_in package and need to be present
@@ -290,8 +295,8 @@ clients:
     http_port: 8109           # unique per client on one host
     longpolling_port: 8112
     domain: dbtest.erp16.orion-instruments.io   # 2026-08-15: TEMPORARILY live, see orion_test's note above
-    secrets_ref: /erp16-sandbox/db_test   # sandbox SSM path prefix (see build/README.md); repointed at
-                                          # the client's real AWS account once milestone 2 is production-ready
+    secrets_ref: /erp16-production/db_test   # 2026-08-27: fixed -- see orion-internal's
+                                          # entry above for the full story, same fix here.
     modules:                  # verified 2026-08-05 via ir_module_module state='installed' on production,
                                # intersected against addons/all/latest/ - full install has 82 modules, but
                                # only these are outside Odoo's own core package and need to be present
