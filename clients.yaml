@@ -217,6 +217,8 @@ clients:
       - sale_amendment
       - serial_fillter_MO
       - sh_access_management
+      - sh_hr_payroll
+      - sh_hr_payroll_account
       - sh_mo_auto_serial_no
       - sh_product_configurator
     backup:
