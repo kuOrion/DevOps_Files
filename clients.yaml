@@ -259,9 +259,11 @@ clients:
     list_db: true             # flip to false once ready to fully close list_db, same as orion-internal
     proxy_mode: true           # 2026-08-15: real cutover -- genuinely behind production HAProxy now
     workers: 2
-    cron_enabled: false       # sandbox-safety default - see orion-internal's note above -- NOTE: this
-                               # is a real external client now live in production; revisit whether
-                               # cron should be true here too, same reasoning as orion-internal
+    cron_enabled: true         # 2026-08-28: revisited -- real external client live in production,
+                               # was silently missing all scheduled actions (invoicing, mail queues,
+                               # etc) since cutover; same reasoning as orion-internal's flip on
+                               # 2026-08-15. parus_instruments deliberately left false (actually
+                               # internal, not a real external client, despite its own stale comment).
     http_port: 8099           # unique per client on one host
     longpolling_port: 8102
     domain: punaeyecare.erp16.orion-instruments.io   # 2026-08-15: real cutover, live
