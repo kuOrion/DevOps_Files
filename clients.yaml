@@ -322,8 +322,17 @@ clients:
                                # intersected against addons/all/latest/ - full install has 82 modules, but
                                # only these are outside Odoo's own core package and need to be present
                                # under erp16-custom-addons
+                               # orion_sales_schedule added 2026-08-30: this list was already incomplete
+                               # before today -- orion_manufacturing hard-depends on it
+                               # ('orion_sales_schedule' in its own manifest), and it's genuinely
+                               # installed on the real db_test database, just never declared here. Only
+                               # surfaced because the per-client repo cutover's module load actually
+                               # failed on it -- the old shared-folder mount silently papered over this
+                               # gap the whole time since every module was always present regardless of
+                               # what this list said.
       - nspl_project_task_access
       - orion_manufacturing
+      - orion_sales_schedule
       - orion_sale_report
       - report_py3o
     backup:
