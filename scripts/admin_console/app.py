@@ -390,6 +390,25 @@ def _run_review(client_id):
         return
 
     _, staging_wt, _ = client_worktrees(client_id)
+
+    # Own-repo clients (orion_test) have Live_copy_of_<id> and
+    # Staging_copy_of_<id> as two fully independent `git clone`s, not
+    # linked `git worktree`s sharing one object database like the shared
+    # clients' Live/Staging/fetch-checkout trio -- fetching into the live
+    # worktree (which _refresh_client_state already does) never populates
+    # staging's own objects for these. Found live 2026-08-30: checkout
+    # failed with "fatal: reference is not a tree" on a commit that had
+    # just been fetched into live moments earlier. Fetching here first is
+    # correct and safe for shared clients too (a linked worktree's fetch
+    # is a normal, idempotent git operation regardless of which worktree
+    # runs it), so this isn't conditional on client type.
+    fetch = _git(["fetch", "origin"], cwd=staging_wt)
+    if fetch.returncode != 0:
+        _job_log(client_id, fetch.stderr.strip() or "git fetch failed in staging worktree.")
+        with _job_lock:
+            _client_jobs[client_id]["state"] = "error"
+        return
+
     checkout = _git(["checkout", target], cwd=staging_wt)
     _job_log(client_id, checkout.stdout.strip() or checkout.stderr.strip() or f"Checked out {target[:7]}.")
     if checkout.returncode != 0:
