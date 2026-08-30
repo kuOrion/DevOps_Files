@@ -19,6 +19,15 @@ clients:
     postgres_version: "14.15"
     hosting: cloud            # cloud | onprem
     onprem_tier: null         # tier1 | tier2 | null (only meaningful if hosting: onprem)
+    git_repo: kuOrion/erp16-orion-internal   # 2026-08-30: per-client module versioning, last of the
+                               # 5 real clients migrated (deliberately last -- highest-stakes real
+                               # system in this project's history). Extracted via git-filter-repo at
+                               # the live commit (116f2a2), all 73 modules' manifest `depends`
+                               # programmatically checked against the shared repo's directory list
+                               # before extracting -- zero undeclared dependencies found. Verified
+                               # byte-for-byte three times: against a local tar of live production,
+                               # against a fresh GitHub clone, and directly on production itself
+                               # module-by-module before the actual cutover.
     list_db: false             # 2026-08-15: real cutover, single-tenant container -- closes the
                                # standing list_db security TODO for real, not deferred again
     proxy_mode: true           # 2026-08-15: real cutover -- genuinely behind the production HAProxy
