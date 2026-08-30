@@ -300,6 +300,11 @@ clients:
     db_name: db_test
     odoo_version: "16.0"
     postgres_version: "14.15"
+    git_repo: kuOrion/erp16-db_test   # 2026-08-30: per-client module versioning, replicated from
+                               # orion_test's pilot. Extracted via git-filter-repo at the live commit
+                               # (116f2a2, not main's tip -- main had 2 undeployed commits meant for
+                               # orion_test specifically), verified byte-for-byte twice (against live
+                               # production before pushing, against a fresh GitHub clone after).
     hosting: cloud
     onprem_tier: null
     list_db: true             # flip to false once ready to fully close list_db, same as orion-internal
