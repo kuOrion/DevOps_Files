@@ -176,6 +176,22 @@ _ODOO_LINE_RE = re.compile(
 )
 _ODOO_LEVELS_KEPT = {"warning", "error", "critical"}
 
+# Odoo's own werkzeug request line carries its real cost (query count,
+# query time, total time) but logs at INFO -- normally dropped entirely
+# by _ODOO_LEVELS_KEPT. Added 2026-08-30: incident 07 (manufactured-
+# report query explosion, 5,928 queries for one request) needed exactly
+# this line and it wasn't anywhere in the collector -- confirmed by
+# reading the filter, not assumed. Captured as a *targeted* exception on
+# cost, not a blanket INFO capture (which is exactly the volume problem
+# _ODOO_LEVELS_KEPT exists to avoid) -- silent for the other >99.9% of
+# ordinary requests, fires only when a request is genuinely anomalous.
+_WERKZEUG_COST_RE = re.compile(
+    r'"[A-Z]+ \S+ HTTP/1\.\d" (?P<status>\d+) \S+ '
+    r"(?P<query_count>\d+) (?P<query_time>[\d.]+) (?P<total_time>[\d.]+)\s*$"
+)
+EXPENSIVE_REQUEST_TOTAL_TIME_S = 2.0
+EXPENSIVE_REQUEST_QUERY_COUNT = 100
+
 
 def _odoo_ts_to_iso(raw):
     # "2026-08-06 10:15:23,456" -> "2026-08-06T10:15:23.456Z"
@@ -209,7 +225,26 @@ class _OdooTailer:
         self.pending = None
 
     def _flush(self):
-        if self.pending and self.pending["level"] in _ODOO_LEVELS_KEPT:
+        if not self.pending:
+            self.pending = None
+            return
+
+        keep = self.pending["level"] in _ODOO_LEVELS_KEPT
+        expensive = None
+        if not keep and self.pending["logger"] == "werkzeug":
+            m = _WERKZEUG_COST_RE.search(self.pending["message"])
+            if m:
+                query_count = int(m.group("query_count"))
+                total_time = float(m.group("total_time"))
+                if total_time >= EXPENSIVE_REQUEST_TOTAL_TIME_S or query_count >= EXPENSIVE_REQUEST_QUERY_COUNT:
+                    expensive = {
+                        "query_count": query_count,
+                        "query_time_s": float(m.group("query_time")),
+                        "total_time_s": total_time,
+                        "status": int(m.group("status")),
+                    }
+
+        if keep or expensive:
             entry = {
                 "ts": self.pending["ts"],
                 "level": self.pending["level"],
@@ -219,6 +254,9 @@ class _OdooTailer:
             }
             if self.pending["traceback"]:
                 entry["traceback"] = self.pending["traceback"].rstrip("\n")
+            if expensive:
+                entry["reason"] = "expensive_request"
+                entry.update(expensive)
             write_entry("odoo", entry)
         self.pending = None
 
@@ -363,6 +401,15 @@ _PG_DISCONNECTION_RE = re.compile(
 # stable and undocumented-to-change wording straight from Postgres's own
 # source (auth.c).
 _PG_AUTH_FAILURE_RE = re.compile(r"password authentication failed for user")
+# log_min_duration_statement's own output format, enabled 2026-08-30 --
+# incident 06 (the stuck cron's recurring stock_move_line/stock_quant
+# query) needed exactly this and it wasn't captured anywhere; finding it
+# required a live pg_stat_activity capture loop instead of a log read.
+# Odoo's ORM-generated SQL runs on one line in practice (confirmed
+# against every query captured live during that investigation) -- true
+# multi-line statement continuations aren't handled here, a deliberate
+# simplification given that reality, not an oversight.
+_PG_SLOW_QUERY_RE = re.compile(r"^duration: (?P<duration_ms>[\d.]+) ms\s+statement:\s*(?P<statement>.*)$", re.DOTALL)
 
 
 def _pg_ts_to_iso(raw):
@@ -438,10 +485,19 @@ class _PostgresTailer:
             self.pending_error = {"ts": iso_ts, "message": msg}
             return
 
-        # LOG-level connection-received/startup/shutdown noise -- skip,
-        # redundant with the docker/ source's own start/stop events and
-        # connection_authorized/disconnection above already covering the
-        # actual security-relevant moments of a session's lifecycle.
+        if level == "LOG":
+            sm = _PG_SLOW_QUERY_RE.match(msg)
+            if sm:
+                write_entry("postgres", {
+                    "ts": iso_ts, "level": "warning", "event": "slow_query",
+                    "client": self.client,
+                    "duration_ms": float(sm.group("duration_ms")),
+                    "statement": sm.group("statement").strip(),
+                })
+            # else: connection-received/startup/shutdown noise -- skip,
+            # redundant with the docker/ source's own start/stop events and
+            # connection_authorized/disconnection above already covering the
+            # actual security-relevant moments of a session's lifecycle.
 
     def close(self):
         self._flush_pending_error()

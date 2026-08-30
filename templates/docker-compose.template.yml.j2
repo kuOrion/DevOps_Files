@@ -21,9 +21,16 @@ services:
     # syntax errors), never a real auth failure or a connection's actual
     # source, which is the entire security gap the postgres/ logging
     # source exists to close (docs/ROADMAP.md, 2026-08-06 logging design).
+    # log_min_duration_statement (2026-08-30): logs any query's full text
+    # + duration once it exceeds 1000ms -- incidents 06/07 both needed
+    # exactly this (which query was slow, not just "a query was slow")
+    # and it required live pg_stat_activity capture to find, since
+    # nothing logged it. 1s chosen deliberately conservative -- catches
+    # genuinely slow queries (the kind that caused real incidents)
+    # without logging every mildly-slow-but-ordinary one.
     # Passed as a command-line override, not baked into the image, so it
     # applies uniformly to every client without a per-image rebuild.
-    command: ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on"]
+    command: ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on", "-c", "log_min_duration_statement=1000"]
 
   web:
     build:
