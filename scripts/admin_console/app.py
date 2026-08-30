@@ -190,7 +190,14 @@ def _fetch_loop():
 
 def _health():
     try:
-        expected = sum(2 for c in real_clients().values())
+        # Every cloud-hosted container actually running on this box,
+        # including staging/sanitize -- NOT real_clients() (which
+        # deliberately excludes those two for the client-cards model).
+        # Using real_clients() here undercounts against what docker ps
+        # actually reports, producing a false "unhealthy" mismatch
+        # (found live, 2026-08-30, right after this file's uniform-model
+        # rewrite -- containers_up=12 vs containers_total=10).
+        expected = sum(2 for c in _clients_yaml().values() if c.get("hosting") == "cloud")
     except Exception:
         expected = 0
 
