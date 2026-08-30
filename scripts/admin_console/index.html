@@ -30,8 +30,8 @@
     background: var(--bg); color: var(--text); margin: 0; padding: 3rem 2.5rem 4rem;
     font-size: 18px; line-height: 1.55;
   }
-  .wrap { max-width: 780px; margin: 0 auto; }
-  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .brand-mark {
     width: 26px; height: 26px; border-radius: 7px; background: var(--accent-bg);
@@ -47,60 +47,70 @@
     border: 1px solid var(--accent) !important; color: var(--accent) !important; text-decoration: none;
   }
 
+  .staging-banner {
+    font-size: 14.5px; color: var(--warning-text); background: var(--warning-bg);
+    border: 1px solid var(--warning-border); border-radius: 8px; padding: 8px 14px; margin-bottom: 1.6rem;
+  }
+  .staging-banner code { font-family: ui-monospace, monospace; }
+
   .section-label {
     font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--accent); margin: 2rem 0 10px;
   }
   .section-label:first-of-type { margin-top: 0; }
 
-  .card {
+  .clients-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+
+  .client-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 1.4rem 1.6rem; box-shadow: var(--shadow);
   }
-  .card + .card { margin-top: 12px; }
-  .card-heading {
-    font-size: 13px; font-weight: 700; color: var(--text-secondary);
-    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 12px;
+  .client-card-title-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .client-card-title { font-size: 17px; font-weight: 700; }
+  .client-card-idle { color: var(--text-secondary); font-size: 15.5px; margin: 10px 0 4px; }
+  .peers-note {
+    font-size: 13.5px; color: var(--text-muted); margin-bottom: 12px; padding: 6px 10px;
+    background: var(--surface); border-radius: 6px;
   }
-  .idle-line { color: var(--text-secondary); font-size: 16.5px; }
 
   .commit-row {
-    display: flex; align-items: baseline; gap: 10px; padding: 8px 0;
-    border-bottom: 1px solid var(--border); font-size: 15px;
+    display: flex; align-items: baseline; gap: 10px; padding: 7px 0;
+    border-bottom: 1px solid var(--border); font-size: 14.5px;
   }
   .commit-row:last-of-type { border-bottom: none; }
-  .commit-hash { font-family: ui-monospace, monospace; font-size: 13.5px; color: var(--text-muted); flex: none; }
+  .commit-hash { font-family: ui-monospace, monospace; font-size: 13px; color: var(--text-muted); flex: none; }
   .commit-msg { color: var(--text); }
-  .commit-author { color: var(--text-muted); font-size: 13.5px; margin-left: auto; flex: none; white-space: nowrap; }
+  .commit-author { color: var(--text-muted); font-size: 13px; margin-left: auto; flex: none; white-space: nowrap; }
 
-  .staging-note { color: var(--text-secondary); font-size: 14.5px; margin: 14px 0; }
+  .staging-note { color: var(--text-secondary); font-size: 14px; margin: 12px 0; }
   .staging-note code { font-family: ui-monospace, monospace; background: var(--surface); padding: 1px 6px; border-radius: 4px; }
 
-  .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
   button.act {
-    font: inherit; font-size: 15.5px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+    font: inherit; font-size: 14.5px; font-weight: 600; padding: 9px 14px; border-radius: 8px;
     border: 1px solid var(--accent) !important; background: transparent !important; color: var(--accent) !important;
     cursor: pointer; transition: opacity 0.12s ease;
   }
   button.act:disabled { opacity: 0.45; cursor: default; }
   button.act.success {
     background: #4c8c2b !important; border: 1px solid #4c8c2b !important; color: #ffffff !important;
-    width: 100%; padding: 13px 16px; font-size: 16px;
+    width: 100%; padding: 12px 16px; font-size: 15px;
   }
+  button.act.small { padding: 5px 10px; font-size: 13px; }
 
-  .deploy-card { background: var(--warning-bg); border: 1px solid var(--warning-border); }
-  .deploy-card .card-heading { color: var(--warning-text); }
-  .deploy-card .deploy-desc { color: var(--warning-text); font-size: 15px; margin-bottom: 14px; }
-  .deploy-card .deploy-desc code { font-family: ui-monospace, monospace; background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 4px; }
+  .deploy-block { background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+  .deploy-block .deploy-heading { color: var(--warning-text); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+  .deploy-block .deploy-desc { color: var(--warning-text); font-size: 14px; margin-bottom: 12px; }
+  .deploy-block .deploy-desc code { font-family: ui-monospace, monospace; background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 4px; }
 
   .job-log {
-    font-family: ui-monospace, monospace; font-size: 13px; color: var(--text-muted);
-    max-height: 160px; overflow-y: auto; white-space: pre-wrap; margin-top: 12px;
+    font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--text-muted);
+    max-height: 140px; overflow-y: auto; white-space: pre-wrap; margin-top: 10px;
     background: var(--surface); border-radius: 6px; padding: 8px 10px;
   }
   .working-row {
-    display: flex; align-items: center; gap: 8px; font-size: 14px;
-    color: var(--text-secondary); margin-top: 12px;
+    display: flex; align-items: center; gap: 8px; font-size: 13.5px;
+    color: var(--text-secondary); margin-top: 10px;
   }
   .spinner-small {
     width: 14px; height: 14px; flex-shrink: 0; border: 2px solid var(--border);
@@ -136,6 +146,32 @@
   }
   .history-toggle .chev { transition: transform 0.15s ease; font-size: 11px; }
   .history-toggle.open .chev { transform: rotate(90deg); }
+
+  /* Restore-from-backup -- deliberately understated, separated by a
+     divider, distinct warning tone -- this discards real data, and
+     should never read as a peer action to Review/Deploy. */
+  .restore-divider { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 10px; }
+  .restore-link {
+    font-size: 13.5px; color: var(--text-muted); background: none; border: none; padding: 0;
+    cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .restore-panel {
+    margin-top: 10px; background: var(--danger-bg); border: 1px solid var(--danger-text);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .restore-panel .restore-heading { color: var(--danger-text); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+  .backup-row {
+    display: flex; align-items: baseline; gap: 10px; padding: 6px 0; font-size: 13.5px;
+    border-bottom: 1px solid rgba(0,0,0,0.08); cursor: pointer;
+  }
+  .backup-row:last-child { border-bottom: none; }
+  .backup-row:hover { opacity: 0.75; }
+  .backup-row.selected { font-weight: 700; }
+  .restore-preview { font-size: 13.5px; color: var(--danger-text); margin: 10px 0; }
+  .restore-confirm-input {
+    font: inherit; font-size: 14px; padding: 7px 10px; border-radius: 6px;
+    border: 1px solid var(--danger-text); width: 100%; margin: 8px 0; background: var(--card); color: var(--text);
+  }
 </style>
 </head>
 <body>
@@ -152,41 +188,35 @@
     </div>
   </div>
 
-  <div class="section-label">Pending review</div>
-  <div id="pending-review-section"></div>
+  <div id="staging-banner-slot"></div>
+
+  <div class="section-label">Clients</div>
+  <div class="clients-grid" id="clients-grid"></div>
 
   <div class="section-label">Health</div>
   <div class="tiles" id="health-tiles"></div>
 
-  <div class="section-label">Recent changes</div>
-  <div class="card" id="recent-changes-card" style="max-height:320px;overflow-y:auto;"></div>
-
   <div class="history-toggle" id="history-toggle" onclick="toggleHistory()">
     <span class="chev">&#9656;</span> Deploy history
   </div>
-  <div class="card" id="deploy-history-card" style="display:none;"></div>
+  <div class="card" id="deploy-history-card" style="display:none; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem 1.4rem;"></div>
 </div>
 
 <script>
 // 127.0.0.1:8209 is staging-web's own direct port binding (clients.yaml's
-// staging entry), unconditionally true regardless of environment -- works
-// the same reached via a direct SSH tunnel to this port on either the
-// sandbox or real production. Previously hardcoded the sandbox's own
-// pseudo-domain HAProxy route (staging.erp16-sandbox.test:8443), which is
-// a nicer *additional* access method that only exists on the sandbox
-// rehearsal, not the only way in -- broke real production, which has no
-// pseudo-domain routing for staging at all (deliberately tunnel-only, see
-// clients.yaml).
+// staging entry) -- works the same over an SSH tunnel to this port
+// regardless of environment.
 const STAGING_URL = 'http://localhost:8209/web/login';
-let jobPollTimer = null;
 let historyOpen = false;
-// Set by doReview(), consumed by refresh() once the review job (which
-// already waits for staging-web to actually respond, see
-// _wait_for_staging_healthy() server-side) reaches state 'done' -- avoids
-// the tab loading staging mid-restart and rendering with no CSS/JS, since
-// HAProxy/Odoo can return an incomplete response while the container is
-// still coming back up.
+let anyJobRunning = false;
+let jobPollTimer = null;
+// Set by doReview(), consumed once that client's review job (which
+// already waits for staging-web to actually respond) reaches state
+// 'done' -- avoids the tab loading staging mid-restart.
 let pendingStagingTab = null;
+let pendingStagingClient = null;
+// {client_id: {open: bool, backups: [...] or null, selected: ts or null}}
+let restorePanels = {};
 
 const WAITING_PAGE_HTML = `<!doctype html><html><head><title>Staging</title>
 <style>
@@ -208,63 +238,135 @@ function esc(s) {
   return d.innerHTML;
 }
 
-function renderPendingReview(s) {
-  const el = document.getElementById('pending-review-section');
-  const jobRunning = s.job.state === 'running';
+function renderClientCard(c) {
+  const jobRunning = c.job.state === 'running';
+  if (jobRunning) anyJobRunning = true;
 
-  if (!s.has_pending) {
-    el.innerHTML = '<div class="card"><div class="idle-line">Live is up to date with main.</div></div>';
-    return;
+  let html = '<div class="client-card">';
+  html += '<div class="client-card-title-row"><span class="client-card-title">' + esc(c.display_name) + '</span></div>';
+
+  if (c.deploy_peers && c.deploy_peers.length) {
+    html += '<div class="peers-note">Shares code with: ' + esc(c.deploy_peers.join(', ')) +
+      ' -- deploying here moves all of them together.</div>';
   }
 
-  const commitRows = s.pending_commits.map(c =>
-    '<div class="commit-row">' +
-      '<span class="commit-hash">' + esc(c.short) + '</span>' +
-      '<span class="commit-msg">' + esc(c.subject) + '</span>' +
-      '<span class="commit-author">' + esc(c.author) + '</span>' +
-    '</div>'
-  ).join('');
+  if (!c.has_pending) {
+    html += '<div class="client-card-idle">Live is up to date.</div>';
+  } else {
+    const commitRows = c.pending_commits.map(cm =>
+      '<div class="commit-row">' +
+        '<span class="commit-hash">' + esc(cm.short) + '</span>' +
+        '<span class="commit-msg">' + esc(cm.subject) + '</span>' +
+        '<span class="commit-author">' + esc(cm.author) + '</span>' +
+      '</div>'
+    ).join('');
+    const stagingLabel = c.staging_matches_pending
+      ? 'Staging currently reflects: <code>' + esc(c.origin_commit) + '</code> (matches)'
+      : 'Staging currently reflects: <code>' + esc(c.staging_commit || 'none') + '</code> (older)';
 
-  const stagingLabel = s.staging_matches_pending
-    ? 'Staging currently reflects: <code>' + esc(s.origin_commit) + '</code> (matches)'
-    : 'Staging currently reflects: <code>' + esc(s.staging_commit || 'none') + '</code> (older)';
-
-  let html = '<div class="card">' +
-    '<div class="card-heading">' + (s.staging_matches_pending ? 'Reviewed' : 'Changes not yet in staging') + '</div>' +
-    commitRows +
-    '<div class="staging-note">' + stagingLabel + '</div>';
-  if (!s.staging_matches_pending) {
-    html += '<div class="btn-row"><button class="act" id="review-btn" ' + (jobRunning ? 'disabled' : '') + '>Review</button></div>';
-  }
-  if (s.job.kind === 'review' && s.job.log.length) {
-    if (jobRunning) html += '<div class="working-row"><span class="spinner-small"></span>Working...</div>';
-    html += '<div class="job-log">' + esc(s.job.log.join('\n')) + '</div>';
-  }
-  html += '</div>';
-
-  if (s.ready_to_deploy) {
-    html += '<div class="card deploy-card">' +
-      '<div class="card-heading">Ready to deploy</div>' +
-      '<div class="deploy-desc">Staging now matches <code>' + esc(s.origin_commit) + '</code> and has been reviewed. This deploys to all live clients.</div>' +
-      '<button class="act success" id="deploy-btn" ' + (jobRunning ? 'disabled' : '') + '>Approve and deploy</button>';
-    if (s.job.kind === 'deploy' && s.job.log.length) {
+    html += commitRows + '<div class="staging-note">' + stagingLabel + '</div>';
+    if (!c.staging_matches_pending || !c.staging_is_showing_this_client) {
+      html += '<div class="btn-row"><button class="act" onclick="doReview(\'' + c.client_id + '\')" ' + (jobRunning ? 'disabled' : '') + '>Review</button></div>';
+    }
+    if (c.job.kind === 'review' && c.job.log.length) {
       if (jobRunning) html += '<div class="working-row"><span class="spinner-small"></span>Working...</div>';
-      html += '<div class="job-log">' + esc(s.job.log.join('\n')) + '</div>';
+      html += '<div class="job-log">' + esc(c.job.log.join('\n')) + '</div>';
+    }
+
+    if (c.ready_to_deploy && c.staging_is_showing_this_client) {
+      html += '<div class="deploy-block">' +
+        '<div class="deploy-heading">Ready to deploy</div>' +
+        '<div class="deploy-desc">Staging matches <code>' + esc(c.origin_commit) + '</code> and has been reviewed.' +
+        (c.deploy_peers.length ? ' This deploys ' + esc(c.deploy_peers.join(', ')) + ' too.' : '') + '</div>' +
+        '<button class="act success" onclick="doDeploy(\'' + c.client_id + '\')" ' + (jobRunning ? 'disabled' : '') + '>Approve and deploy</button>';
+      if (c.job.kind === 'deploy' && c.job.log.length) {
+        if (jobRunning) html += '<div class="working-row"><span class="spinner-small"></span>Working...</div>';
+        html += '<div class="job-log">' + esc(c.job.log.join('\n')) + '</div>';
+      }
+      html += '</div>';
+    } else if (c.ready_to_deploy && !c.staging_is_showing_this_client) {
+      html += '<div class="staging-note">Staging is currently showing a different client -- review again to deploy this one.</div>';
+    }
+  }
+
+  html += renderRestoreSection(c);
+  html += '</div>';
+  return html;
+}
+
+function renderRestoreSection(c) {
+  const panel = restorePanels[c.client_id] || { open: false, backups: null, selected: null };
+  let html = '<div class="restore-divider">';
+  html += '<button class="restore-link" onclick="toggleRestore(\'' + c.client_id + '\')">' +
+    (panel.open ? 'Hide restore options' : 'Restore from backup...') + '</button>';
+
+  if (panel.open) {
+    html += '<div class="restore-panel">';
+    html += '<div class="restore-heading">Restore a past snapshot (code + data + filestore)</div>';
+    if (panel.backups === null) {
+      html += '<div class="empty-note">Loading...</div>';
+    } else if (!panel.backups.length) {
+      html += '<div class="empty-note">No local backups available.</div>';
+    } else {
+      html += panel.backups.map(b => {
+        const selected = panel.selected === b.timestamp;
+        return '<div class="backup-row' + (selected ? ' selected' : '') + '" onclick="selectBackup(\'' + c.client_id + '\',\'' + b.timestamp + '\')">' +
+          esc(b.timestamp) + ' &middot; code <span class="commit-hash">' + esc(b.commit || '?') + '</span></div>';
+      }).join('');
+
+      if (panel.selected) {
+        html += '<div class="restore-preview">This discards all data changes made since ' + esc(panel.selected) +
+          ' (orders, records, anything created since then) and reverts code to what was live then. This cannot be undone.</div>';
+        html += '<input class="restore-confirm-input" id="restore-confirm-' + c.client_id + '" placeholder="Type &quot;' + esc(c.client_id) + '&quot; to confirm">';
+        html += '<button class="act" style="border-color:var(--danger-text) !important;color:var(--danger-text) !important;" onclick="doRestore(\'' + c.client_id + '\')">Restore this snapshot</button>';
+      }
     }
     html += '</div>';
   }
+  html += '</div>';
+  return html;
+}
 
-  el.innerHTML = html;
+function toggleRestore(clientId) {
+  const panel = restorePanels[clientId] || { open: false, backups: null, selected: null };
+  panel.open = !panel.open;
+  restorePanels[clientId] = panel;
+  if (panel.open && panel.backups === null) {
+    loadBackups(clientId);
+  } else {
+    renderAll(lastStatus);
+  }
+}
 
-  const reviewBtn = document.getElementById('review-btn');
-  if (reviewBtn) reviewBtn.addEventListener('click', doReview);
-  const deployBtn = document.getElementById('deploy-btn');
-  if (deployBtn) deployBtn.addEventListener('click', doDeploy);
+async function loadBackups(clientId) {
+  try {
+    const res = await fetch(`/api/backups/${clientId}`);
+    const data = await res.json();
+    restorePanels[clientId].backups = data.backups || [];
+  } catch (e) {
+    restorePanels[clientId].backups = [];
+  }
+  renderAll(lastStatus);
+}
 
-  // innerHTML replacement above resets scroll position to the top on every
-  // poll (every 1.5s while a job runs) -- pin these to their bottom instead,
-  // since that's where new log lines actually appear.
-  el.querySelectorAll('.job-log').forEach(log => { log.scrollTop = log.scrollHeight; });
+function selectBackup(clientId, ts) {
+  restorePanels[clientId].selected = ts;
+  renderAll(lastStatus);
+}
+
+async function doRestore(clientId) {
+  const input = document.getElementById('restore-confirm-' + clientId);
+  if (!input || input.value.trim() !== clientId) {
+    alert('Type the client name exactly to confirm.');
+    return;
+  }
+  const ts = restorePanels[clientId].selected;
+  await fetch(`/api/restore/${clientId}`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({timestamp: ts}),
+  });
+  restorePanels[clientId] = { open: false, backups: null, selected: null };
+  refresh();
 }
 
 function renderHealth(h) {
@@ -288,7 +390,8 @@ function renderHistory(rows) {
     const badgeClass = r.result === 'success' ? 'success' : 'rolled_back';
     const badgeLabel = r.result === 'success' ? 'Success' : 'Rolled back';
     const when = new Date(r.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const scope = (r.clients || []).length ? 'All ' + r.clients.length + ' clients' : '--';
+    const clients = r.clients || [];
+    const scope = clients.length > 1 ? clients.join(', ') : (clients[0] || '--');
     return '<div class="history-row">' +
       '<span class="history-time">' + esc(when) + '</span>' +
       '<span class="badge ' + badgeClass + '">' + badgeLabel + '</span>' +
@@ -299,19 +402,19 @@ function renderHistory(rows) {
   }).join('');
 }
 
-function renderFetchNote(s) {
+function renderFetchNote(lastFetchAt, lastFetchError) {
   const el = document.getElementById('fetch-note');
-  if (s.last_fetch_error) {
-    el.textContent = 'Fetch error: ' + s.last_fetch_error;
+  if (lastFetchError) {
+    el.textContent = 'Fetch error: ' + lastFetchError;
     el.classList.add('err');
     return;
   }
   el.classList.remove('err');
-  if (!s.last_fetch_at) {
+  if (!lastFetchAt) {
     el.textContent = 'Checking for updates...';
     return;
   }
-  el.textContent = 'Last checked: ' + new Date(s.last_fetch_at).toLocaleTimeString();
+  el.textContent = 'Last checked: ' + new Date(lastFetchAt).toLocaleTimeString();
 }
 
 function toggleHistory() {
@@ -320,28 +423,26 @@ function toggleHistory() {
   document.getElementById('deploy-history-card').style.display = historyOpen ? 'block' : 'none';
 }
 
-async function loadRecentChanges() {
-  const el = document.getElementById('recent-changes-card');
-  let data;
-  try {
-    const res = await fetch('/api/recent-changes');
-    data = await res.json();
-  } catch (e) {
-    el.innerHTML = '<div class="empty-note">Could not load recent changes.</div>';
-    return;
+let lastStatus = null;
+
+function renderAll(s) {
+  if (!s) return;
+  document.getElementById('clients-grid').innerHTML = s.clients.map(renderClientCard).join('');
+
+  const banner = document.getElementById('staging-banner-slot');
+  banner.innerHTML = s.staging_points_at
+    ? '<div class="staging-banner">Staging is currently showing: <code>' + esc(s.staging_points_at) + '</code></div>'
+    : '';
+
+  renderHealth(s.health);
+  renderHistory(s.deploy_history);
+
+  let mostRecentFetch = null, fetchErr = null;
+  for (const c of s.clients) {
+    if (c.last_fetch_error) fetchErr = c.last_fetch_error;
+    if (c.last_fetch_at && (!mostRecentFetch || c.last_fetch_at > mostRecentFetch)) mostRecentFetch = c.last_fetch_at;
   }
-  const changes = data.changes || [];
-  if (!changes.length) {
-    el.innerHTML = '<div class="empty-note">No commits yet.</div>';
-    return;
-  }
-  el.innerHTML = changes.map(c =>
-    '<div class="commit-row">' +
-      '<span class="commit-hash">' + esc(c.hash) + '</span>' +
-      '<span class="commit-msg">' + esc(c.subject) + '</span>' +
-      '<span class="commit-author">' + esc(c.author) + ' &middot; ' + esc(c.when) + '</span>' +
-    '</div>'
-  ).join('');
+  renderFetchNote(mostRecentFetch, fetchErr);
 }
 
 async function refresh() {
@@ -352,54 +453,43 @@ async function refresh() {
   } catch (e) {
     return;
   }
-  renderFetchNote(s);
-  renderPendingReview(s);
-  renderHealth(s.health);
-  renderHistory(s.deploy_history);
+  lastStatus = s;
+  anyJobRunning = false;
+  renderAll(s);
 
-  if (s.job.state === 'running') {
+  if (anyJobRunning) {
     if (!jobPollTimer) jobPollTimer = setInterval(refresh, 1500);
   } else if (jobPollTimer) {
     clearInterval(jobPollTimer);
     jobPollTimer = null;
   }
 
-  if (pendingStagingTab && s.job.kind === 'review' && s.job.state !== 'running') {
-    const tab = pendingStagingTab;
-    pendingStagingTab = null;
-    if (s.job.state === 'done') {
-      stagingReachable().then(ok => {
-        if (ok) {
-          tab.location.href = STAGING_URL;
-        } else if (tab.document) {
-          // Backend confirms staging-web is healthy, but this browser
-          // can't reach it -- almost always the :8443 SSH tunnel (separate
-          // from this console's own :5252 tunnel) has died. Say so instead
-          // of letting the tab hard-navigate into Chrome's native
-          // "site can't be reached" page with no next step.
-          const msg = tab.document.getElementById('msg');
-          if (msg) msg.innerHTML = 'Staging is up, but this browser can\'t reach it.<br>Your SSH tunnel for :8443 is probably down -- re-run:<br><code style="opacity:0.9">ssh -L 8443:127.0.0.1:8443 sandbox</code><br>then reload this tab.';
-          const spinner = tab.document.querySelector('.spinner');
-          if (spinner) spinner.style.display = 'none';
-        }
-      });
-    } else if (tab.document) {
-      // error state -- staging didn't come up healthy in time. Don't
-      // silently redirect into the same broken page; say so instead.
-      const msg = tab.document.getElementById('msg');
-      if (msg) msg.textContent = 'Staging did not come back up cleanly -- check the Pending review log on this page before retrying.';
+  if (pendingStagingTab && pendingStagingClient) {
+    const c = s.clients.find(x => x.client_id === pendingStagingClient);
+    if (c && c.job.kind === 'review' && c.job.state !== 'running') {
+      const tab = pendingStagingTab;
+      pendingStagingTab = null;
+      pendingStagingClient = null;
+      if (c.job.state === 'done') {
+        stagingReachable().then(ok => {
+          if (ok) {
+            tab.location.href = STAGING_URL;
+          } else if (tab.document) {
+            const msg = tab.document.getElementById('msg');
+            if (msg) msg.innerHTML = 'Staging is up, but this browser can\'t reach it.<br>Your SSH tunnel for :8443 is probably down -- re-run:<br><code style="opacity:0.9">ssh -L 8443:127.0.0.1:8443 sandbox</code><br>then reload this tab.';
+            const spinner = tab.document.querySelector('.spinner');
+            if (spinner) spinner.style.display = 'none';
+          }
+        });
+      } else if (tab.document) {
+        const msg = tab.document.getElementById('msg');
+        if (msg) msg.textContent = 'Staging did not come back up cleanly -- check this client\'s review log on the admin console before retrying.';
+      }
     }
   }
 }
 
 async function stagingReachable() {
-  // The backend confirming staging-web is healthy only means the sandbox's
-  // *internal* network can reach it -- says nothing about whether this
-  // browser's own SSH tunnel for :8443 is still up (it's a separate tunnel
-  // from the one carrying this admin console's own :5252, and has been
-  // observed to silently die independently, e.g. across a sandbox
-  // idle-stop/restart). 'no-cors' mode avoids a CORS error masking the
-  // real signal we want: whether the network request itself lands at all.
   try {
     await fetch(STAGING_URL, { mode: 'no-cors', cache: 'no-store' });
     return true;
@@ -408,23 +498,19 @@ async function stagingReachable() {
   }
 }
 
-async function doReview() {
-  // window.open must run synchronously, before any await, or the browser
-  // no longer treats it as tied to the click and blocks the popup. Can't
-  // use 'noopener' here (unlike the plain "Open staging" link) -- that
-  // flag makes window.open() return null, and we need the reference to
-  // redirect this tab once staging is actually confirmed back up.
+async function doReview(clientId) {
   pendingStagingTab = window.open('', '_blank');
+  pendingStagingClient = clientId;
   if (pendingStagingTab) {
     pendingStagingTab.document.write(WAITING_PAGE_HTML);
     pendingStagingTab.document.close();
   }
-  await fetch('/api/review', { method: 'POST' });
+  await fetch(`/api/review/${clientId}`, { method: 'POST' });
   refresh();
 }
 
-async function doDeploy() {
-  await fetch('/api/deploy', { method: 'POST' });
+async function doDeploy(clientId) {
+  await fetch(`/api/deploy/${clientId}`, { method: 'POST' });
   refresh();
 }
 
@@ -446,7 +532,6 @@ async function checkNow() {
 document.getElementById('check-now-btn').addEventListener('click', checkNow);
 
 refresh();
-loadRecentChanges();
 setInterval(refresh, 3000);
 </script>
 </body>
