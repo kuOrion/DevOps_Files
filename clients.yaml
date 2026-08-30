@@ -239,6 +239,10 @@ clients:
     postgres_version: "14.15"
     hosting: cloud
     onprem_tier: null
+    git_repo: kuOrion/erp16-parus_instruments   # 2026-08-30: per-client module versioning, replicated
+                               # from orion_test's pilot. Started as a fresh empty repo, not a
+                               # git-filter-repo extraction -- this client had zero custom modules to
+                               # begin with (see `modules:` below), so there was nothing to extract.
     list_db: true             # flip to false once ready to fully close list_db, same as orion-internal
     proxy_mode: true           # 2026-08-15: real cutover -- genuinely behind production HAProxy now
     workers: 2
