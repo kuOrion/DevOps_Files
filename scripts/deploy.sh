@@ -153,6 +153,93 @@ promote() {
     echo "=== promoted: $before -> $after ==="
 }
 
+# --- per-client module versioning (docs/PER_CLIENT_MODULE_VERSIONING.md):
+# a client with `git_repo` set in clients.yaml has its own dedicated
+# worktree at ~/Live_copy_of_<client_id> instead of sharing $LIVE_WORKTREE
+# -- these two helpers and deploy_client() below are the scoped
+# equivalent of promote()/full_deploy(), touching exactly ONE client's
+# worktree+container, never the shared one, never looping every cloud
+# client. Additive only -- promote()/full_deploy() above are completely
+# unchanged, still the only path for every client without git_repo set.
+client_has_own_repo() {
+    python3 -c "
+import yaml
+cfg = yaml.safe_load(open('$CLIENTS_YAML'))['clients'].get('$1', {})
+print('yes' if cfg.get('git_repo') else 'no')
+"
+}
+
+client_live_worktree() {
+    echo "$HOME/Live_copy_of_$1"
+}
+
+# --- scoped promote: same shape as promote() above, but operates on one
+# client's own worktree, fetching directly in it (safe -- `git fetch`
+# never touches the working tree, so it's fine even on a live-serving
+# worktree; no separate neutral fetch checkout needed here the way the
+# shared model uses one, since there's no other worktree's branch state
+# to protect).
+promote_client() {
+    local client_id="$1" target="$2"
+    local worktree; worktree=$(client_live_worktree "$client_id")
+    [ -d "$worktree" ] || fail "no live worktree for '$client_id' at $worktree"
+
+    echo "=== [$client_id] fetching latest ==="
+    git -C "$worktree" fetch origin
+
+    local before; before=$(git -C "$worktree" rev-parse --short HEAD)
+    echo "=== [$client_id] live worktree: $before -> $target ==="
+    git -C "$worktree" checkout "$target"
+    local after; after=$(git -C "$worktree" rev-parse --short HEAD)
+
+    [ "$after" = "$(git -C "$worktree" rev-parse --short "$target")" ] || fail "[$client_id] worktree didn't land on the expected commit"
+    echo "=== [$client_id] promoted: $before -> $after ==="
+}
+
+# --- scoped full deploy: backup -> promote -> restart+healthcheck ->
+# rollback-on-failure, for exactly ONE client. Reuses backup_client/
+# restart_and_check/rollback_client unchanged -- those were already
+# per-client even in the shared-worktree model. No group/atomic-rollback
+# logic here at all (unlike full_deploy()) -- deliberate, per the
+# 2026-08-30 discussion: per-client-always is the actual desired
+# operating model, not a constrained special case of "deploy everyone."
+deploy_client() {
+    local client_id="$1" target="$2"
+    local start_ts; start_ts=$(date +%s)
+
+    [ "$(client_has_own_repo "$client_id")" = "yes" ] || fail "'$client_id' has no git_repo set in clients.yaml -- use the normal full-fleet deploy for shared-worktree clients"
+
+    local previous_commit
+    previous_commit=$(git -C "$(client_live_worktree "$client_id")" rev-parse HEAD)
+
+    echo "=== [$client_id] DEPLOY START: $previous_commit -> $target ==="
+
+    echo "--- Step 1/3: pre-deploy backup ---"
+    local backup_dir; backup_dir=$(backup_client "$client_id")
+    echo
+
+    echo "--- Step 2/3: promote ---"
+    promote_client "$client_id" "$target"
+    echo
+
+    echo "--- Step 3/3: restart + healthcheck ---"
+    if restart_and_check "$client_id"; then
+        echo "=== [$client_id] DEPLOY SUCCEEDED on $target ==="
+        write_deploy_log "success" "$target" "$previous_commit" "$client_id" "" "$(( $(date +%s) - start_ts ))"
+        return 0
+    fi
+
+    echo "=== [$client_id] DEPLOY FAILED -- rolling back ==="
+    rollback_client "$client_id" "$backup_dir"
+    promote_client "$client_id" "$(git -C "$(client_live_worktree "$client_id")" rev-parse --short "$previous_commit")"
+    if ! restart_and_check "$client_id"; then
+        echo "=== [$client_id] WARNING: still unhealthy after rollback -- needs manual attention ==="
+    fi
+    echo "=== [$client_id] ROLLBACK COMPLETE: reverted to $previous_commit ==="
+    write_deploy_log "rolled_back" "$target" "$previous_commit" "$client_id" "$client_id" "$(( $(date +%s) - start_ts ))"
+    return 1
+}
+
 # --- earthmech release sync: mirrors whichever modules clients.yaml's
 # earthmech.modules lists (only ones already proven live on cloud clients,
 # by construction -- a module only gets added to that list after it's
@@ -489,8 +576,19 @@ case "${1:-}" in
         [ -n "${3:-}" ] || fail "Usage: $0 rollback <client_id> <backup_dir>"
         rollback_client "$2" "$3"
         ;;
+    promote-client)
+        [ -n "${3:-}" ] || fail "Usage: $0 promote-client <client_id> <commit>"
+        promote_client "$2" "$3"
+        ;;
+    deploy-client)
+        # Per-client module versioning (docs/PER_CLIENT_MODULE_VERSIONING.md)
+        # -- scoped backup->promote->healthcheck->rollback for ONE client
+        # with its own git_repo. Never touches any other client.
+        [ -n "${3:-}" ] || fail "Usage: $0 deploy-client <client_id> <commit>"
+        deploy_client "$2" "$3"
+        ;;
     "")
-        fail "Usage: $0 <commit>  |  $0 {backup|promote|healthcheck|rollback} ..."
+        fail "Usage: $0 <commit>  |  $0 {backup|promote|healthcheck|rollback|deploy-client} ..."
         ;;
     *)
         # anything else is treated as the full-flow target commit

@@ -60,6 +60,33 @@ _state = {
 _job_lock = threading.Lock()
 _job = {"kind": None, "state": "idle", "log": []}
 
+# Per-client module versioning (docs/PER_CLIENT_MODULE_VERSIONING.md):
+# a client with `git_repo` set in clients.yaml has its own dedicated repo
+# and worktrees (~/Live_copy_of_<id>, ~/Staging_copy_of_<id>) instead of
+# the shared ones above. Everything below is additive, parallel state --
+# _state/_job and the shared-repo routes are completely untouched, still
+# the only path for every client without git_repo set.
+_scoped_state_lock = threading.Lock()
+_scoped_state = {}  # {client_id: same shape as _state}
+
+_scoped_job_lock = threading.Lock()
+_scoped_jobs = {}  # {client_id: same shape as _job}
+
+
+def scoped_clients():
+    import yaml
+    with open(CLIENTS_YAML) as f:
+        clients = yaml.safe_load(f)["clients"]
+    return {cid: cfg for cid, cfg in clients.items() if cfg.get("git_repo")}
+
+
+def client_live_worktree(client_id):
+    return os.path.expanduser(f"~/Live_copy_of_{client_id}")
+
+
+def client_staging_worktree(client_id):
+    return os.path.expanduser(f"~/Staging_copy_of_{client_id}")
+
 
 def _git(args, cwd):
     return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
@@ -108,10 +135,39 @@ def _refresh_state(do_fetch):
         _state["pending_commits"] = _pending_commits(FETCH_CHECKOUT, live, origin)
 
 
+def _refresh_scoped_state(client_id, do_fetch):
+    """Same shape as _refresh_state, scoped to one client's own worktree
+    -- fetching directly in the live worktree is safe (git fetch never
+    touches the working tree), so no separate neutral fetch checkout is
+    needed the way the shared model uses one."""
+    live_wt = client_live_worktree(client_id)
+    staging_wt = client_staging_worktree(client_id)
+    with _scoped_state_lock:
+        entry = _scoped_state.setdefault(client_id, {
+            "live_commit": None, "origin_commit": None, "staging_commit": None,
+            "pending_commits": [], "last_fetch_at": None, "last_fetch_error": None,
+        })
+        if do_fetch:
+            fetch = _git(["fetch", "origin"], cwd=live_wt)
+            entry["last_fetch_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            entry["last_fetch_error"] = None if fetch.returncode == 0 else (fetch.stderr.strip() or "fetch failed")
+
+        live = _rev_parse(live_wt)
+        origin = _rev_parse(live_wt, "origin/main")
+        staging = _rev_parse(staging_wt)
+
+        entry["live_commit"] = live
+        entry["origin_commit"] = origin
+        entry["staging_commit"] = staging
+        entry["pending_commits"] = _pending_commits(live_wt, live, origin)
+
+
 def _fetch_loop():
     while True:
         try:
             _refresh_state(do_fetch=True)
+            for client_id in scoped_clients():
+                _refresh_scoped_state(client_id, do_fetch=True)
         except Exception:
             pass
         time.sleep(FETCH_INTERVAL_SECONDS)
@@ -179,10 +235,7 @@ def _deploy_history(limit=10):
     return entries
 
 
-@app.route("/api/status")
-def api_status():
-    with _state_lock:
-        state = dict(_state)
+def _derive_status(state):
     staging_matches_pending = bool(
         state["staging_commit"] and state["origin_commit"]
         and state["staging_commit"] == state["origin_commit"]
@@ -191,9 +244,7 @@ def api_status():
         state["live_commit"] and state["origin_commit"]
         and state["live_commit"] != state["origin_commit"]
     )
-    with _job_lock:
-        job = {"kind": _job["kind"], "state": _job["state"], "log": _job["log"][-15:]}
-    return jsonify({
+    return {
         "live_commit": _short(state["live_commit"]),
         "origin_commit": _short(state["origin_commit"]),
         "staging_commit": _short(state["staging_commit"]),
@@ -203,10 +254,38 @@ def api_status():
         "ready_to_deploy": has_pending and staging_matches_pending,
         "last_fetch_at": state["last_fetch_at"],
         "last_fetch_error": state["last_fetch_error"],
-        "health": _health(),
-        "deploy_history": _deploy_history(),
-        "job": job,
-    })
+    }
+
+
+@app.route("/api/status")
+def api_status():
+    with _state_lock:
+        state = dict(_state)
+    with _job_lock:
+        job = {"kind": _job["kind"], "state": _job["state"], "log": _job["log"][-15:]}
+
+    scoped = {}
+    with _scoped_state_lock:
+        scoped_state_copy = {cid: dict(s) for cid, s in _scoped_state.items()}
+    with _scoped_job_lock:
+        scoped_job_copy = {cid: {"kind": j["kind"], "state": j["state"], "log": j["log"][-15:]} for cid, j in _scoped_jobs.items()}
+    for client_id, cfg in scoped_clients().items():
+        s = scoped_state_copy.get(client_id, {
+            "live_commit": None, "origin_commit": None, "staging_commit": None,
+            "pending_commits": [], "last_fetch_at": None, "last_fetch_error": None,
+        })
+        entry = _derive_status(s)
+        entry["client_id"] = client_id
+        entry["display_name"] = cfg.get("display_name", client_id)
+        entry["job"] = scoped_job_copy.get(client_id, {"kind": None, "state": "idle", "log": []})
+        scoped[client_id] = entry
+
+    resp = _derive_status(state)
+    resp["health"] = _health()
+    resp["deploy_history"] = _deploy_history()
+    resp["job"] = job
+    resp["scoped_clients"] = scoped
+    return jsonify(resp)
 
 
 def _job_log(line):
@@ -239,6 +318,26 @@ def _wait_for_staging_healthy(timeout_seconds=60):
     return False
 
 
+def _render_staging_for(addons_path):
+    """Re-render staging's docker-compose.yml pointed at a specific addons
+    checkout -- one shared staging container slot, dynamically re-pointed
+    per review, rather than a separate staging container per client (this
+    box has already shown real CPU/memory pressure this session; more
+    always-on containers wasn't justified by review frequency). Called on
+    every review, scoped or shared, so staging always ends up pointed at
+    the right worktree regardless of what was reviewed last -- otherwise
+    a scoped review followed by a shared one (or vice versa) would leave
+    staging silently mounted from the wrong place."""
+    cmd = [
+        "python3", os.path.join(BUILD_DIR, "scripts", "render_client.py"), "staging",
+        "--container-prefix", "staging",
+        "--addons-path", addons_path,
+        "--config-path", os.path.join(BUILD_DIR, "generated", "staging", "config"),
+        "--out", os.path.join(BUILD_DIR, "generated", "staging"),
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
 def _run_review():
     with _job_lock:
         if _job["state"] == "running":
@@ -255,6 +354,13 @@ def _run_review():
     checkout = _git(["checkout", target], cwd=STAGING_WORKTREE)
     _job_log(checkout.stdout.strip() or checkout.stderr.strip() or f"Checked out {target[:7]}.")
     if checkout.returncode != 0:
+        with _job_lock:
+            _job["state"] = "error"
+        return
+
+    render = _render_staging_for(STAGING_WORKTREE)
+    if render.returncode != 0:
+        _job_log(render.stdout.strip() + render.stderr.strip())
         with _job_lock:
             _job["state"] = "error"
         return
@@ -286,6 +392,77 @@ def api_review():
         if _job["state"] == "running":
             return jsonify({"error": "already working"}), 409
     t = threading.Thread(target=_run_review, daemon=True)
+    t.start()
+    return jsonify({"ok": True})
+
+
+def _scoped_job_log(client_id, line):
+    with _scoped_job_lock:
+        _scoped_jobs.setdefault(client_id, {"kind": None, "state": "idle", "log": []})
+        _scoped_jobs[client_id]["log"].append(line)
+
+
+def _run_scoped_review(client_id):
+    with _scoped_job_lock:
+        job = _scoped_jobs.setdefault(client_id, {"kind": None, "state": "idle", "log": []})
+        if job["state"] == "running":
+            return
+        job.update({"kind": "review", "state": "running", "log": [f"Moving staging to {client_id}'s latest commit..."]})
+
+    with _scoped_state_lock:
+        target = _scoped_state.get(client_id, {}).get("origin_commit")
+    if not target:
+        _scoped_job_log(client_id, "No commit to stage yet -- try again after the next fetch.")
+        with _scoped_job_lock:
+            _scoped_jobs[client_id]["state"] = "error"
+        return
+
+    staging_wt = client_staging_worktree(client_id)
+    checkout = _git(["checkout", target], cwd=staging_wt)
+    _scoped_job_log(client_id, checkout.stdout.strip() or checkout.stderr.strip() or f"Checked out {target[:7]}.")
+    if checkout.returncode != 0:
+        with _scoped_job_lock:
+            _scoped_jobs[client_id]["state"] = "error"
+        return
+
+    _scoped_job_log(client_id, f"Re-rendering staging to point at {client_id}'s own code...")
+    render = _render_staging_for(staging_wt)
+    if render.returncode != 0:
+        _scoped_job_log(client_id, render.stdout.strip() + render.stderr.strip())
+        with _scoped_job_lock:
+            _scoped_jobs[client_id]["state"] = "error"
+        return
+
+    _scoped_job_log(client_id, "Restarting staging-web...")
+    restart = subprocess.run(["docker", "restart", "staging-web"], capture_output=True, text=True)
+    if restart.returncode != 0:
+        _scoped_job_log(client_id, restart.stderr.strip() or "Restart failed.")
+        with _scoped_job_lock:
+            _scoped_jobs[client_id]["state"] = "error"
+        return
+
+    _scoped_job_log(client_id, "Waiting for staging-web to actually accept requests...")
+    if not _wait_for_staging_healthy():
+        _scoped_job_log(client_id, "staging-web did not come up healthy within 60s -- check `docker logs staging-web` before trusting the review.")
+        with _scoped_job_lock:
+            _scoped_jobs[client_id]["state"] = "error"
+        return
+
+    _scoped_job_log(client_id, "Staging updated and confirmed responding. Review the client data through the tunnel, then approve when ready.")
+    _refresh_scoped_state(client_id, do_fetch=False)
+    with _scoped_job_lock:
+        _scoped_jobs[client_id]["state"] = "done"
+
+
+@app.route("/api/scoped-review/<client_id>", methods=["POST"])
+def api_scoped_review(client_id):
+    if client_id not in scoped_clients():
+        return jsonify({"error": f"'{client_id}' has no dedicated repo configured."}), 404
+    with _scoped_job_lock:
+        job = _scoped_jobs.get(client_id, {})
+        if job.get("state") == "running":
+            return jsonify({"error": "already working"}), 409
+    t = threading.Thread(target=_run_scoped_review, args=(client_id,), daemon=True)
     t.start()
     return jsonify({"ok": True})
 
@@ -334,6 +511,57 @@ def api_deploy():
     return jsonify({"ok": True})
 
 
+def _run_scoped_deploy(client_id):
+    with _scoped_job_lock:
+        job = _scoped_jobs.setdefault(client_id, {"kind": None, "state": "idle", "log": []})
+        if job["state"] == "running":
+            return
+        job.update({"kind": "deploy", "state": "running", "log": ["Starting deploy..."]})
+
+    with _scoped_state_lock:
+        s = _scoped_state.get(client_id, {})
+        target = s.get("origin_commit")
+        staging = s.get("staging_commit")
+    if not target or staging != target:
+        _scoped_job_log(client_id, "Staging no longer matches the pending commit -- review again before deploying.")
+        with _scoped_job_lock:
+            _scoped_jobs[client_id]["state"] = "error"
+        return
+
+    proc = subprocess.Popen(
+        [DEPLOY_SH, "deploy-client", client_id, target],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+    )
+    for line in proc.stdout:
+        _scoped_job_log(client_id, line.rstrip("\n"))
+    proc.wait()
+    _refresh_scoped_state(client_id, do_fetch=False)
+    with _scoped_job_lock:
+        _scoped_jobs[client_id]["state"] = "done" if proc.returncode == 0 else "error"
+
+
+@app.route("/api/scoped-deploy/<client_id>", methods=["POST"])
+def api_scoped_deploy(client_id):
+    if client_id not in scoped_clients():
+        return jsonify({"error": f"'{client_id}' has no dedicated repo configured."}), 404
+    with _scoped_state_lock:
+        s = _scoped_state.get(client_id, {})
+        ready = bool(
+            s.get("staging_commit") and s.get("origin_commit")
+            and s["staging_commit"] == s["origin_commit"]
+            and s.get("live_commit") != s.get("origin_commit")
+        )
+    if not ready:
+        return jsonify({"error": "Staging isn't reviewed against the pending commit yet."}), 409
+    with _scoped_job_lock:
+        job = _scoped_jobs.get(client_id, {})
+        if job.get("state") == "running":
+            return jsonify({"error": "already working"}), 409
+    t = threading.Thread(target=_run_scoped_deploy, args=(client_id,), daemon=True)
+    t.start()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/check-now", methods=["POST"])
 def api_check_now():
     # On-demand counterpart to the 45s background fetch loop -- lets the
@@ -341,6 +569,8 @@ def api_check_now():
     # FETCH_INTERVAL_SECONDS for a just-sent commit to show up.
     try:
         _refresh_state(do_fetch=True)
+        for client_id in scoped_clients():
+            _refresh_scoped_state(client_id, do_fetch=True)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
     return jsonify({"ok": True})
@@ -372,6 +602,8 @@ def index():
 if __name__ == "__main__":
     port = int(os.environ.get("ADMIN_CONSOLE_PORT", 5252))
     _refresh_state(do_fetch=True)
+    for _cid in scoped_clients():
+        _refresh_scoped_state(_cid, do_fetch=True)
     threading.Thread(target=_fetch_loop, daemon=True).start()
     print(f"ERP16 Admin Console: http://127.0.0.1:{port}")
     app.run(host="127.0.0.1", port=port, debug=False)
