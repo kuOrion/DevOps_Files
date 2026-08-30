@@ -1125,11 +1125,134 @@ def system_audit_loop():
 
 
 # ---------------------------------------------------------------------------
+# Resource-usage thread: continuous CPU/memory/query-pressure sampling --
+# added 2026-08-30 after both the 06 (chronic slowdown/stuck cron) and 07
+# (manufactured-report query explosion) incidents needed this exact data
+# and neither found it anywhere already being collected. Every other
+# thread here answers "what happened" after the fact (Odoo/HAProxy log
+# lines, docker events); nothing answered "why" -- that only came from
+# building a throwaway monitor script live, during the incident itself.
+# This is that same script's own proven sampling shape (load average,
+# per-container CPU/MEM%, Postgres active-query/idle-in-txn/longest-query
+# pressure), made permanent instead of ad hoc. One JSONL line per sample
+# keeps this cheap: ~1KB/sample x 1440 samples/day (60s interval) is
+# ~1.4MB/day, ~130MB over the full 90-day routine retention window --
+# smaller than a single client backup, well under 1% of available disk.
+# ---------------------------------------------------------------------------
+
+RESOURCE_USAGE_INTERVAL_SECONDS = 60
+
+_PG_QUERY_STATS_SQL = {
+    "active_queries": "select count(*) from pg_stat_activity where state='active';",
+    "idle_in_txn": "select count(*) from pg_stat_activity where state='idle in transaction';",
+    "longest_active_query_s": (
+        "select coalesce(max(extract(epoch from (now()-query_start))),0)::int "
+        "from pg_stat_activity where state='active';"
+    ),
+}
+
+
+def _load_average():
+    try:
+        with open("/proc/loadavg") as f:
+            parts = f.read().split()
+        return {"load_1m": float(parts[0]), "load_5m": float(parts[1]), "load_15m": float(parts[2])}
+    except Exception:
+        return {"load_1m": None, "load_5m": None, "load_15m": None}
+
+
+def _docker_stats_all():
+    """One docker stats snapshot for every running container -- {name:
+    (cpu_pct, mem_pct)}, both as bare floats (no '%' suffix)."""
+    try:
+        out = subprocess.check_output(
+            ["docker", "stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}"],
+            text=True,
+        )
+    except Exception:
+        return {}
+    stats = {}
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        name, cpu, mem = parts
+        try:
+            stats[name] = (float(cpu.rstrip("%")), float(mem.rstrip("%")))
+        except ValueError:
+            continue
+    return stats
+
+
+def _pg_query_pressure(container, dbname):
+    result = {}
+    for key, sql in _PG_QUERY_STATS_SQL.items():
+        try:
+            out = subprocess.check_output(
+                ["docker", "exec", container, "psql", "-U", "odoo", "-d", dbname, "-tAc", sql],
+                text=True, stderr=subprocess.DEVNULL,
+            )
+            result[key] = float(out.strip())
+        except Exception:
+            result[key] = None
+    return result
+
+
+def resource_usage_poll_once():
+    entry = {"level": "info", "host": _load_average(), "clients": {}}
+    stats = _docker_stats_all()
+
+    try:
+        containers = subprocess.check_output(["docker", "ps", "--format", "{{.Names}}"], text=True).split()
+    except Exception:
+        containers = []
+
+    per_client = {}
+    for container in containers:
+        client, role = resolve_client(container)
+        if client is None:
+            continue
+        per_client.setdefault(client, {})
+        cpu, mem = stats.get(container, (None, None))
+        per_client[client][f"{role}_cpu_pct"] = cpu
+        per_client[client][f"{role}_mem_pct"] = mem
+        if role == "db":
+            try:
+                dbnames = _list_databases(container)
+            except Exception:
+                dbnames = []
+            # Query pressure is host-wide per DB container (a single
+            # -db container can hold more than one database, e.g.
+            # staging) -- sum across whatever's actually present rather
+            # than guess a single "the" database name, matching how
+            # model_audit_poll_once() already handles this same shape.
+            totals = {"active_queries": 0, "idle_in_txn": 0, "longest_active_query_s": 0}
+            for dbname in dbnames:
+                p = _pg_query_pressure(container, dbname)
+                for k in totals:
+                    if p.get(k) is not None:
+                        totals[k] = max(totals[k], p[k]) if k == "longest_active_query_s" else totals[k] + p[k]
+            per_client[client].update(totals)
+
+    entry["clients"] = per_client
+    write_entry("resource_usage", entry)
+
+
+def resource_usage_loop():
+    while not _stop.is_set():
+        try:
+            resource_usage_poll_once()
+        except Exception:
+            pass
+        _stop.wait(RESOURCE_USAGE_INTERVAL_SECONDS)
+
+
+# ---------------------------------------------------------------------------
 # Retention pruning (routine sources only -- deploy/, ssh/, model_audit/,
 # and system_audit/ are audit, kept forever)
 # ---------------------------------------------------------------------------
 
-_ROUTINE_SOURCES = ("docker", "odoo", "haproxy")
+_ROUTINE_SOURCES = ("docker", "odoo", "haproxy", "resource_usage")
 
 
 def prune_loop():
@@ -1164,6 +1287,7 @@ def main():
         threading.Thread(target=haproxy_tail_worker, daemon=True),
         threading.Thread(target=model_audit_loop, daemon=True),
         threading.Thread(target=system_audit_loop, daemon=True),
+        threading.Thread(target=resource_usage_loop, daemon=True),
         threading.Thread(target=prune_loop, daemon=True),
     ]
     for t in threads:
