@@ -1,0 +1,15 @@
+[Unit]
+Description=Run ERP16 daily backup at 02:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+# If the box happened to be down/stopped at 02:00 (e.g. an idle-stop
+# cycle from the now-retired sandbox era, or a reboot), still run once
+# on the next boot rather than silently skipping that day entirely --
+# same "never silently lost" reasoning as everywhere else backup/audit
+# state matters in this project.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

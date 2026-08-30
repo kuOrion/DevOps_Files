@@ -23,6 +23,14 @@ CLIENTS_YAML="$BUILD_DIR/clients.yaml"
 LIVE_WORKTREE="$HOME/Live_copy_of_Addons"
 BACKUPS_DIR="$HOME/Backups"
 DEPLOY_LOG_DIR="/opt/erp16/logs/deploy"
+BACKUP_RETENTION_DAYS=10   # 2026-08-30: independent daily backup, closes the
+                           # gap where a client's last backup could be
+                           # several days stale (backups were previously
+                           # only ever a side effect of a deploy running --
+                           # found live, orion-internal's last backup was
+                           # 3+ days old with no deploy in between). Separate
+                           # from, and a stopgap ahead of, the still-unbuilt
+                           # off-box daily Kaustubha Udyog DR server.
 
 fail() { echo "ERROR: $1" >&2; exit 1; }
 
@@ -88,6 +96,48 @@ print(cfg['db_name'])
 "
 }
 
+# --- prune_client_backups: delete backup directories older than
+# BACKUP_RETENTION_DAYS for one client. Timestamped folder names
+# (%Y%m%dT%H%M%SZ) sort lexicographically = chronologically, so a plain
+# string comparison against the cutoff works without parsing each one.
+prune_client_backups() {
+    local client_id="$1"
+    local dir="$BACKUPS_DIR/$client_id"
+    [ -d "$dir" ] || return 0
+    local cutoff; cutoff=$(date -u -d "$BACKUP_RETENTION_DAYS days ago" +%Y%m%dT%H%M%SZ)
+    local ts
+    for ts in $(ls "$dir" 2>/dev/null); do
+        if [[ "$ts" < "$cutoff" ]]; then
+            echo "=== [$client_id] pruning backup older than ${BACKUP_RETENTION_DAYS}d: $ts ===" >&2
+            rm -rf "${dir:?}/${ts:?}"
+        fi
+    done
+}
+
+# --- backup_all: independent daily backup for every real cloud client,
+# regardless of whether a deploy has happened recently -- see
+# BACKUP_RETENTION_DAYS comment above for why this exists. Each client's
+# backup failing doesn't stop the others (best-effort across the fleet,
+# same reasoning as full_deploy's per-client healthchecks) -- one client's
+# docker/pg_dump hiccup shouldn't silently skip backing up the other 4.
+backup_all() {
+    local failed=""
+    local c
+    for c in $(list_cloud_clients); do
+        if backup_client "$c" >/dev/null; then
+            prune_client_backups "$c"
+        else
+            echo "=== [$c] BACKUP FAILED -- see above ===" >&2
+            failed="$failed $c"
+        fi
+    done
+    if [ -n "$failed" ]; then
+        echo "=== backup_all: FAILED for:$failed ===" >&2
+        return 1
+    fi
+    echo "=== backup_all: succeeded for all clients ===" >&2
+}
+
 # --- backup: pg_dump (-Fc, matching pull_from_live.sh's format) + a
 # filestore tarball, taken together as one atomic pair -- restoring one
 # without the other reproduces the exact "500 on compiled JS/CSS bundles"
@@ -123,7 +173,22 @@ backup_client() {
     # against code the dump's ir_module_module state doesn't match. Data
     # alone was never the full "recreate this client from scratch" story
     # (found while walking through exactly that scenario, 2026-08-05).
-    git -C "$LIVE_WORKTREE" rev-parse HEAD > "$dest/live_commit.txt"
+    #
+    # Per-client module versioning (docs/PER_CLIENT_MODULE_VERSIONING.md):
+    # a client with its own git_repo has its own worktree -- hardcoding
+    # $LIVE_WORKTREE here silently recorded the WRONG repo's commit for
+    # any such client (found live, 2026-08-30, checking orion_test's own
+    # backup right after its cutover). Also record which repo the commit
+    # belongs to, not just a bare hash -- once more than one repo exists,
+    # a commit hash alone is no longer globally unambiguous.
+    local worktree
+    if [ "$(client_has_own_repo "$client_id")" = "yes" ]; then
+        worktree=$(client_live_worktree "$client_id")
+    else
+        worktree="$LIVE_WORKTREE"
+    fi
+    git -C "$worktree" rev-parse HEAD > "$dest/live_commit.txt"
+    echo "$worktree" > "$dest/live_worktree.txt"
 
     echo "=== [$client_id] done: $dest/{db.dump,filestore.tar.gz} ===" >&2
     echo "$dest"
@@ -557,6 +622,13 @@ case "${1:-}" in
     backup)
         [ -n "${2:-}" ] || fail "Usage: $0 backup <client_id>"
         backup_client "$2"
+        ;;
+    backup-all)
+        # Independent daily backup for every real client, regardless of
+        # deploy activity -- see BACKUP_RETENTION_DAYS comment. Intended
+        # to run on a schedule (systemd timer), not called from other
+        # deploy.sh flows.
+        backup_all
         ;;
     promote)
         [ -n "${2:-}" ] || fail "Usage: $0 promote <commit>"
