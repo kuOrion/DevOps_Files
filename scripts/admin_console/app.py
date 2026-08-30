@@ -362,13 +362,29 @@ def _render_staging_for(addons_path):
     """Re-render staging's docker-compose.yml pointed at a specific addons
     checkout -- one shared staging container slot, dynamically re-pointed
     per review. Called on every review so staging always ends up pointed
-    at the right worktree regardless of what was reviewed last."""
+    at the right worktree regardless of what was reviewed last.
+
+    --local-secrets (2026-08-30): clients.yaml's `staging` entry still has
+    `secrets_ref: /erp16-sandbox/staging`, a leftover from before the real
+    cutover -- production's own EC2 instance role has no ssm:PutParameter
+    on that path (found live: identical AccessDeniedException reproduced
+    against both a shared client's and orion_test's staging render, so
+    this was silently broken for every review, not new). The `/api/status`
+    "staging matches pending" signal is computed purely from git HEAD, so
+    this failure was invisible in the UI -- staging's container was never
+    actually rebuilt even when the card showed a match.
+    secrets.local.yaml on production was pre-seeded with staging's real,
+    already-live Postgres/master password (read out of the last-good,
+    Aug-15 generated/staging/docker-compose.yml/odoo.conf) before this
+    flag was added, so this doesn't generate a mismatched new password
+    against the already-initialized staging-db volume."""
     cmd = [
         "python3", os.path.join(BUILD_DIR, "scripts", "render_client.py"), "staging",
         "--container-prefix", "staging",
         "--addons-path", addons_path,
         "--config-path", os.path.join(BUILD_DIR, "generated", "staging", "config"),
         "--out", os.path.join(BUILD_DIR, "generated", "staging"),
+        "--local-secrets",
     ]
     return subprocess.run(cmd, capture_output=True, text=True)
 
