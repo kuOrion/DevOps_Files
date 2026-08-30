@@ -440,8 +440,21 @@ def _run_review(client_id):
             _client_jobs[client_id]["state"] = "error"
         return
 
-    _job_log(client_id, "Restarting staging-web...")
-    restart = subprocess.run(["docker", "restart", "staging-web"], capture_output=True, text=True)
+    _job_log(client_id, "Recreating staging-web with the newly-rendered config...")
+    # `docker restart` (used here until 2026-08-30) only restarts the
+    # container's existing process -- it keeps whatever bind mounts were
+    # baked in at the container's last creation, completely ignoring a
+    # freshly re-rendered docker-compose.yml. Harmless for shared clients
+    # (their addons mount path never changes between reviews, only the
+    # code inside it), but found live to silently break orion_test's
+    # review: `docker inspect` showed staging-web still bind-mounted from
+    # Staging_copy_of_Addons (the old shared folder) even after a
+    # successful checkout+render into Staging_copy_of_orion_test -- the
+    # container was simply never told its mount path had changed. `docker
+    # compose up -d` recreates the container against the current compose
+    # file when its config differs, and is a safe no-op when it doesn't.
+    compose_file = os.path.join(BUILD_DIR, "generated", "staging", "docker-compose.yml")
+    restart = subprocess.run(["docker", "compose", "-f", compose_file, "up", "-d", "web"], capture_output=True, text=True)
     if restart.returncode != 0:
         _job_log(client_id, restart.stderr.strip() or "Restart failed.")
         with _job_lock:
