@@ -30,7 +30,16 @@ services:
     # without logging every mildly-slow-but-ordinary one.
     # Passed as a command-line override, not baked into the image, so it
     # applies uniformly to every client without a per-image rebuild.
-    command: ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on", "-c", "log_min_duration_statement=1000"]
+    # shared_preload_libraries=pg_stat_statements (2026-08-30): postmaster-
+    # context parameter, only takes effect via this command-line/config
+    # route (ALTER SYSTEM alone isn't enough) and requires a real restart,
+    # same as this whole command list already does. Gives persistent
+    # per-query call-count/total-time aggregates that survive across
+    # sessions -- complements log_min_duration_statement's per-event
+    # slow-query text rather than duplicating it. The `pg_stat_statements`
+    # extension object itself still needs `CREATE EXTENSION` per database
+    # once this flag is live; not created automatically by this flag alone.
+    command: ["postgres", "-c", "log_connections=on", "-c", "log_disconnections=on", "-c", "log_min_duration_statement=1000", "-c", "shared_preload_libraries=pg_stat_statements"]
 
   web:
     build:
