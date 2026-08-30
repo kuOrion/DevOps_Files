@@ -267,6 +267,13 @@ clients:
     postgres_version: "14.15"
     hosting: cloud
     onprem_tier: null
+    git_repo: kuOrion/erp16-puna_eye_care   # 2026-08-30: per-client module versioning, replicated from
+                               # orion_test's pilot. Extracted via git-filter-repo at the live commit
+                               # (116f2a2, not main's tip). All 7 modules' manifest `depends` checked
+                               # against the shared repo's own directory list *before* extracting this
+                               # time (db_test's cutover just found an undeclared hard dependency the
+                               # hard way) -- none of puna_eye_care's declared modules depend on any
+                               # custom module outside this list. Verified byte-for-byte twice.
     list_db: true             # flip to false once ready to fully close list_db, same as orion-internal
     proxy_mode: true           # 2026-08-15: real cutover -- genuinely behind production HAProxy now
     workers: 2
