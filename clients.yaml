@@ -337,8 +337,13 @@ clients:
     http_port: 8119            # unique per client on one host
     longpolling_port: 8122
     domain: null                # on-prem clients never get HAProxy routing, by design
-    secrets_ref: /erp16-sandbox/earthmech   # sandbox SSM path prefix; repointed at the client's real
-                                             # AWS account (or equivalent on-prem secrets store) once real
+    secrets_ref: null   # 2026-08-30: was /erp16-sandbox/earthmech -- a retired-sandbox SSM path that
+                         # would AccessDenied if ever actually exercised (found live via the identical
+                         # staging bug this same day). null falls back to render_client.py's own
+                         # resolve_secrets_local(), same as any client with no secrets_ref -- correct
+                         # for a laptop-only understudy that's never rendered against a real AWS
+                         # account. Repoint at the client's real AWS account (or equivalent on-prem
+                         # secrets store) once real on-prem cutover happens.
     modules: []                # verified 2026-08-10 via ir_module_module state='installed' against the
                                  # freshly-pulled+sanitized copy - core Odoo only (accounting, CRM, sales,
                                  # purchase, stock), zero custom Orion modules installed for this client
