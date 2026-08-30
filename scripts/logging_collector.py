@@ -52,6 +52,7 @@ kept forever, never pruned.
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -60,6 +61,12 @@ from datetime import datetime, timedelta, timezone
 
 LOG_DIR = "/opt/erp16/logs"
 RETENTION_DAYS = 90
+# session_state is much higher-detail (per-session query text, every ~20s)
+# than the other routine sources -- kept only 5 days, not 90, since its
+# entire purpose is "reconstruct exactly what was happening minute-by-
+# minute if a call comes in about the last few days," not a long-term
+# trend (resource_usage's aggregate counts already cover that cheaply).
+HOT_RETENTION_DAYS = 5
 RESCAN_INTERVAL_SECONDS = 15
 
 _write_lock = threading.Lock()
@@ -1217,6 +1224,24 @@ def _load_average():
         return {"load_1m": None, "load_5m": None, "load_15m": None}
 
 
+def _disk_usage():
+    # 2026-08-30: found missing while reviewing incident 06/07 coverage --
+    # disk filling up (log growth, backup bloat, filestore growth, WAL) is
+    # one of the most common real outage causes and had zero passive
+    # coverage until now, despite resource_usage tracking CPU/mem since
+    # its own introduction. Single root filesystem for the whole host
+    # (confirmed via `df`), so one check covers everything -- no per-
+    # client breakdown needed, this is a host-wide constraint.
+    try:
+        total, used, free = shutil.disk_usage("/")
+        return {
+            "disk_used_pct": round(100.0 * used / total, 1),
+            "disk_free_gb": round(free / (1024 ** 3), 1),
+        }
+    except Exception:
+        return {"disk_used_pct": None, "disk_free_gb": None}
+
+
 def _docker_stats_all():
     """One docker stats snapshot for every running container -- {name:
     (cpu_pct, mem_pct)}, both as bare floats (no '%' suffix)."""
@@ -1255,7 +1280,7 @@ def _pg_query_pressure(container, dbname):
 
 
 def resource_usage_poll_once():
-    entry = {"level": "info", "host": _load_average(), "clients": {}}
+    entry = {"level": "info", "host": {**_load_average(), **_disk_usage()}, "clients": {}}
     stats = _docker_stats_all()
 
     try:
@@ -1304,28 +1329,134 @@ def resource_usage_loop():
 
 
 # ---------------------------------------------------------------------------
+# session_state: the detail resource_usage deliberately doesn't carry --
+# the actual non-idle session list (pid, wait_event_type, query text,
+# xact age) and outstanding lock waits per client database, snapshotted
+# every 20s. resource_usage's active_queries/idle_in_txn counts tell you
+# *that* something was busy; this tells you *which* session, blocked on
+# what, running which statement -- the exact detail incident 06 needed
+# and only got via a live, ad hoc pg_stat_activity capture loop
+# (quiet_window_monitor.sh) because nothing passive held it. Kept only
+# HOT_RETENTION_DAYS (5), not RETENTION_DAYS (90) -- see that constant's
+# own comment.
+# ---------------------------------------------------------------------------
+
+SESSION_STATE_INTERVAL_SECONDS = 20
+
+_SESSION_SNAPSHOT_SQL = (
+    "SELECT pid, state, coalesce(wait_event_type,''), "
+    "EXTRACT(EPOCH FROM (now()-query_start))::int, "
+    "EXTRACT(EPOCH FROM (now()-xact_start))::int, "
+    "left(query,150) "
+    "FROM pg_stat_activity "
+    "WHERE state != 'idle' AND pid <> pg_backend_pid() "  # exclude this query's own backend
+    "ORDER BY xact_start ASC NULLS LAST LIMIT 30;"
+)
+
+
+def _pg_session_snapshot(container, dbname):
+    sessions = []
+    try:
+        out = subprocess.check_output(
+            ["docker", "exec", container, "psql", "-U", "odoo", "-d", dbname,
+             "-tA", "-F", "|", "-c", _SESSION_SNAPSHOT_SQL],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+        for line in out.strip().splitlines():
+            parts = line.split("|")
+            if len(parts) != 6:
+                continue
+            pid, state, wait_event_type, query_age_s, xact_age_s, query = parts
+            sessions.append({
+                "pid": int(pid),
+                "state": state,
+                "wait_event_type": wait_event_type or None,
+                "query_age_s": int(query_age_s) if query_age_s else None,
+                "xact_age_s": int(xact_age_s) if xact_age_s else None,
+                "query": query,
+            })
+    except Exception:
+        pass
+
+    lock_waits = None
+    try:
+        out = subprocess.check_output(
+            ["docker", "exec", container, "psql", "-U", "odoo", "-d", dbname,
+             "-tAc", "SELECT count(*) FROM pg_locks WHERE NOT granted;"],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+        lock_waits = int(out.strip())
+    except Exception:
+        pass
+
+    return {"sessions": sessions, "lock_waits_not_granted": lock_waits}
+
+
+def session_state_poll_once():
+    try:
+        containers = subprocess.check_output(["docker", "ps", "--format", "{{.Names}}"], text=True).split()
+    except Exception:
+        containers = []
+
+    per_client = {}
+    for container in containers:
+        client, role = resolve_client(container)
+        if client is None or role != "db":
+            continue
+        try:
+            dbnames = _list_databases(container)
+        except Exception:
+            dbnames = []
+        per_db = {}
+        for dbname in dbnames:
+            snap = _pg_session_snapshot(container, dbname)
+            if snap["sessions"] or snap["lock_waits_not_granted"]:
+                per_db[dbname] = snap
+        if per_db:
+            per_client[client] = per_db
+
+    if per_client:  # idle system -> nothing worth writing, keep volume down
+        write_entry("session_state", {"level": "info", "clients": per_client})
+
+
+def session_state_loop():
+    while not _stop.is_set():
+        try:
+            session_state_poll_once()
+        except Exception:
+            pass
+        _stop.wait(SESSION_STATE_INTERVAL_SECONDS)
+
+
+# ---------------------------------------------------------------------------
 # Retention pruning (routine sources only -- deploy/, ssh/, model_audit/,
 # and system_audit/ are audit, kept forever)
 # ---------------------------------------------------------------------------
 
 _ROUTINE_SOURCES = ("docker", "odoo", "haproxy", "resource_usage")
+_HOT_SOURCES = ("session_state",)
+
+
+def _prune_sources(sources, retention_days):
+    cutoff = time.time() - retention_days * 86400
+    for source in sources:
+        d = os.path.join(LOG_DIR, source)
+        if not os.path.isdir(d):
+            continue
+        for fname in os.listdir(d):
+            path = os.path.join(d, fname)
+            try:
+                if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+            except OSError:
+                pass
 
 
 def prune_loop():
     while not _stop.is_set():
-        cutoff = time.time() - RETENTION_DAYS * 86400
-        for source in _ROUTINE_SOURCES:
-            d = os.path.join(LOG_DIR, source)
-            if not os.path.isdir(d):
-                continue
-            for fname in os.listdir(d):
-                path = os.path.join(d, fname)
-                try:
-                    if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
-                        os.remove(path)
-                except OSError:
-                    pass
-        _stop.wait(86400)  # once a day is plenty for a 90-day window
+        _prune_sources(_ROUTINE_SOURCES, RETENTION_DAYS)
+        _prune_sources(_HOT_SOURCES, HOT_RETENTION_DAYS)
+        _stop.wait(86400)  # once a day is plenty for a 90-day (or 5-day) window
 
 
 def _handle_sigterm(signum, frame):
@@ -1344,6 +1475,7 @@ def main():
         threading.Thread(target=model_audit_loop, daemon=True),
         threading.Thread(target=system_audit_loop, daemon=True),
         threading.Thread(target=resource_usage_loop, daemon=True),
+        threading.Thread(target=session_state_loop, daemon=True),
         threading.Thread(target=prune_loop, daemon=True),
     ]
     for t in threads:
