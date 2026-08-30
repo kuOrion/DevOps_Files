@@ -124,6 +124,13 @@ clients:
     postgres_version: "14.15"
     hosting: cloud
     onprem_tier: null
+    git_repo: kuOrion/erp16-orion_test   # 2026-08-30: per-client module versioning pilot -- when set,
+                               # this client's code lives in its own dedicated repo, not the shared
+                               # erp16-custom-addons monorepo. render_client.py/git_console/deploy.sh
+                               # all treat this field's presence/absence as the switch between the two
+                               # models. Absent (the default) = today's shared-worktree behavior,
+                               # unchanged, for every other client. See
+                               # docs/PER_CLIENT_MODULE_VERSIONING.md.
     list_db: true             # single-client sandbox for now; flip false once milestone 6 lands
     proxy_mode: true           # 2026-08-15: real cutover -- see the temporary-exposure note on `domain` below
     workers: 2

@@ -189,6 +189,12 @@
   </div>
 
   <div class="section-label">Changes</div>
+  <div class="changes-row" style="grid-column: 1 / -1;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:0.6rem;">
+      <span style="font-size:14px; color:var(--text-secondary);">Working on:</span>
+      <select id="working-on-picker" onchange="onWorkingOnChange()"></select>
+    </div>
+  </div>
   <div class="changes-row">
     <div class="card" id="changes-card">
       <div id="changes-idle-view" class="changes-idle" style="display:none;">
@@ -230,6 +236,35 @@ let sendsOpen = false;
 let sendsLoaded = false;
 let diffOpen = false;
 
+// "Working on" -- which client's code the Changes/diff/Send for Review
+// panel operates on. Persisted in localStorage so it survives a page
+// reload (a dev mid-edit shouldn't have to re-pick it every time).
+// Separate from #client-picker (which only ever lists STOPPED clients,
+// for starting a container) -- this needs to stay selectable even while
+// a container is running, since git status doesn't depend on that.
+let currentGitClient = localStorage.getItem('erp16_git_console_client') || null;
+let allClientIds = [];
+
+function onWorkingOnChange() {
+  currentGitClient = document.getElementById('working-on-picker').value;
+  localStorage.setItem('erp16_git_console_client', currentGitClient);
+  sendsLoaded = false;
+  if (diffOpen) { diffOpen = false; toggleDiff(); }
+  refreshChanges();
+  if (sendsOpen) refreshSends();
+}
+
+function populateWorkingOnPicker(clients) {
+  allClientIds = clients.map(c => c.client_id);
+  if (!currentGitClient || !allClientIds.includes(currentGitClient)) {
+    currentGitClient = allClientIds[0] || null;
+  }
+  const picker = document.getElementById('working-on-picker');
+  const optionsHtml = clients.map(c => `<option value="${c.client_id}">${c.display_name}</option>`).join('');
+  if (picker.innerHTML !== optionsHtml) picker.innerHTML = optionsHtml;
+  if (currentGitClient) picker.value = currentGitClient;
+}
+
 function stepLabel(logLines) {
   if (!logLines || !logLines.length) return 'Starting...';
   const last = logLines[logLines.length - 1];
@@ -241,6 +276,10 @@ let lastStoppedKey = null;
 async function refreshClients() {
   const res = await fetch('/api/clients');
   const data = await res.json();
+
+  const hadClient = !!currentGitClient;
+  populateWorkingOnPicker(data.clients);
+  if (!hadClient && currentGitClient) { refreshChanges(); }
 
   const runningIds = new Set(data.clients.filter(c => c.running).map(c => c.client_id));
   const startingIds = Object.keys(data.jobs).filter(id => data.jobs[id].state === 'running' && !runningIds.has(id));
@@ -334,7 +373,8 @@ async function stopClient(id) {
 }
 
 async function refreshChanges() {
-  const res = await fetch('/api/git/status');
+  if (!currentGitClient) return;
+  const res = await fetch(`/api/git/status/${currentGitClient}`);
   const data = await res.json();
   lastStatus = data;
 
@@ -398,7 +438,7 @@ async function toggleDiff() {
     return;
   }
   btn.textContent = 'Hide changes';
-  const res = await fetch('/api/git/diff');
+  const res = await fetch(`/api/git/diff/${currentGitClient}`);
   const data = await res.json();
   panel.innerHTML = data.files.map(f => `
     <div class="diff-file">
@@ -408,7 +448,7 @@ async function toggleDiff() {
 }
 
 async function saveChanges() {
-  const res = await fetch('/api/save-changes', {method: 'POST'});
+  const res = await fetch(`/api/save-changes/${currentGitClient}`, {method: 'POST'});
   if (res.ok) {
     refreshChanges();
     if (diffOpen) toggleDiff();
@@ -427,7 +467,7 @@ async function sendForReview() {
   }
   const message = box.value.trim();
   if (!message) { alert('Please describe changes first -- a few words is enough.'); return; }
-  const res = await fetch('/api/send-for-review', {
+  const res = await fetch(`/api/send-for-review/${currentGitClient}`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({message}),
   });
@@ -460,7 +500,8 @@ function initials(name) {
 }
 
 async function refreshSends() {
-  const res = await fetch('/api/recent-sends');
+  if (!currentGitClient) return;
+  const res = await fetch(`/api/recent-sends/${currentGitClient}`);
   const data = await res.json();
   const el = document.getElementById('sends-card');
   if (!data.sends.length) {

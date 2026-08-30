@@ -89,6 +89,23 @@ def load_clients():
     return {cid: cfg for cid, cfg in clients.items() if cid not in _NON_DEV_CLIENTS}
 
 
+# Per-client module versioning (docs/PER_CLIENT_MODULE_VERSIONING.md):
+# a client with `git_repo` set in clients.yaml has its own dedicated repo
+# instead of sharing ADDONS_DIR with everyone else. Convention over
+# configuration -- the local folder is always `erp16-<client_id>`, sibling
+# to this checkout, same place `dev-start.sh --addons-path` already
+# expects the shared one, so no per-developer setup is needed beyond
+# `git clone` once. Absent `git_repo` (every client except the pilot,
+# today) falls straight back to today's exact global-ADDONS_DIR behavior
+# -- zero change for anyone not yet migrated.
+def client_addons_dir(client_id):
+    clients = load_clients()
+    cfg = clients.get(client_id, {})
+    if cfg.get("git_repo"):
+        return os.path.join(os.path.dirname(BUILD_DIR), f"erp16-{client_id}")
+    return ADDONS_DIR
+
+
 def docker_ps():
     result = subprocess.run(
         ["docker", "ps", "--format", "{{.Names}}\t{{.Status}}"],
@@ -139,7 +156,7 @@ def _job_log(client_id, line):
 def _run_job(client_id, args):
     with _jobs_lock:
         _jobs[client_id] = {"state": "running", "log": []}
-    cmd = [DEV_START, client_id] + args
+    cmd = [DEV_START, client_id, "--addons-path", client_addons_dir(client_id)] + args
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
     )
@@ -164,67 +181,67 @@ def _git(args, cwd=ADDONS_DIR):
     return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
 
 
-def _auto_commit_if_dirty(reason):
+def _auto_commit_if_dirty(reason, addons_dir):
     """Commits any uncommitted changes locally. NEVER pushes -- this is
     purely a safety net so work is never at risk of being lost to a
     mistake (a bad checkout, a pull, closing the laptop for the day). The
     only thing that ever reaches anyone else is Send for Review."""
-    status = _git(["status", "--porcelain"])
+    status = _git(["status", "--porcelain"], cwd=addons_dir)
     if not status.stdout.strip():
         return None
-    _git(["add", "-A"])
+    _git(["add", "-A"], cwd=addons_dir)
     msg = f"WIP: auto-commit ({reason})"
-    commit = _git(["commit", "-m", msg])
+    commit = _git(["commit", "-m", msg], cwd=addons_dir)
     return msg if commit.returncode == 0 else None
 
 
-def _pull_with_conflict_safety():
+def _pull_with_conflict_safety(addons_dir):
     """Pull latest main. If it can't merge cleanly, never ask the dev to
     resolve it -- nobody here can. Whatever's on local main right now
     (including any commit just made) is preserved on a timestamped backup
     branch, pushed, and local main is hard-reset to match origin/main so
     there's always a clean base to keep working from. Returns
     (ok: bool, message: str|None)."""
-    pull = _git(["pull", "--no-rebase", "origin", "main"])
+    pull = _git(["pull", "--no-rebase", "origin", "main"], cwd=addons_dir)
     if pull.returncode == 0:
         return True, None
-    _git(["merge", "--abort"])
+    _git(["merge", "--abort"], cwd=addons_dir)
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     backup_branch = f"wip/backup-{ts}"
-    _git(["branch", backup_branch])
-    _git(["push", "-u", "origin", backup_branch])
-    _git(["reset", "--hard", "origin/main"])
+    _git(["branch", backup_branch], cwd=addons_dir)
+    _git(["push", "-u", "origin", backup_branch], cwd=addons_dir)
+    _git(["reset", "--hard", "origin/main"], cwd=addons_dir)
     return False, (
         f"Someone else's changes conflicted with yours. Nothing was lost -- "
         f"your work is safely saved on '{backup_branch}'. Ask your admin for help merging it in."
     )
 
 
-def _safe_pull_latest(reason):
+def _safe_pull_latest(reason, addons_dir):
     """Used by Get Latest: commit any dirty work locally first (generic
     message, never pushed), then pull with the same conflict safety net
     Send for Review uses."""
-    _auto_commit_if_dirty(reason)
-    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    _auto_commit_if_dirty(reason, addons_dir)
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=addons_dir).stdout.strip()
     if branch != "main":
-        _git(["checkout", "main"])
-    return _pull_with_conflict_safety()
+        _git(["checkout", "main"], cwd=addons_dir)
+    return _pull_with_conflict_safety(addons_dir)
 
 
 @app.route("/api/stop/<client_id>", methods=["POST"])
 def api_stop(client_id):
-    committed = _auto_commit_if_dirty(f"stopped {client_id}")
+    committed = _auto_commit_if_dirty(f"stopped {client_id}", client_addons_dir(client_id))
     t = threading.Thread(target=_run_job, args=(client_id, ["--down"]), daemon=True)
     t.start()
     return jsonify({"ok": True, "committed": committed})
 
 
-@app.route("/api/save-changes", methods=["POST"])
-def api_save_changes():
+@app.route("/api/save-changes/<client_id>", methods=["POST"])
+def api_save_changes(client_id):
     """A lightweight checkpoint -- local commit only, generic message, same
     safety net Stop already uses. No description needed; this isn't
     Send for Review, it's just 'don't lose this.'"""
-    committed = _auto_commit_if_dirty("manual save")
+    committed = _auto_commit_if_dirty("manual save", client_addons_dir(client_id))
     if not committed:
         return jsonify({"error": "Nothing to save."}), 400
     return jsonify({"ok": True})
@@ -240,7 +257,7 @@ def api_job(client_id):
 def _run_get_latest(client_id):
     with _jobs_lock:
         _jobs[client_id] = {"state": "running", "log": ["Pulling latest code..."]}
-    ok, msg = _safe_pull_latest(f"get latest before working on {client_id}")
+    ok, msg = _safe_pull_latest(f"get latest before working on {client_id}", client_addons_dir(client_id))
     _job_log(client_id, msg or "Code up to date.")
     if not ok:
         with _jobs_lock:
@@ -248,7 +265,7 @@ def _run_get_latest(client_id):
         return
 
     _job_log(client_id, "Refreshing sanitized data...")
-    cmd = [DEV_START, client_id, "--refresh"] + _aws_profile_args()
+    cmd = [DEV_START, client_id, "--addons-path", client_addons_dir(client_id), "--refresh"] + _aws_profile_args()
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
     )
@@ -269,9 +286,10 @@ def api_get_latest(client_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/git/status")
-def api_git_status():
-    status = _git(["status", "--porcelain"])
+@app.route("/api/git/status/<client_id>")
+def api_git_status(client_id):
+    addons_dir = client_addons_dir(client_id)
+    status = _git(["status", "--porcelain"], cwd=addons_dir)
     files = []
     # splitlines() on the raw stdout, NOT stdout.strip() first -- porcelain
     # format's leading space (e.g. " M path" for an unstaged modification)
@@ -282,7 +300,7 @@ def api_git_status():
         if not line.strip():
             continue
         code, path = line[:2].strip(), line[3:]
-        numstat = _git(["diff", "--numstat", "HEAD", "--", path])
+        numstat = _git(["diff", "--numstat", "HEAD", "--", path], cwd=addons_dir)
         added, removed = "0", "0"
         if numstat.stdout.strip():
             parts = numstat.stdout.strip().split("\t")
@@ -296,26 +314,26 @@ def api_git_status():
     # Send for Review entirely, even though there's now a real local
     # commit on main waiting to be pushed. ahead_count is what lets the
     # frontend tell "nothing to do" apart from "saved, not yet sent."
-    ahead = _git(["rev-list", "--count", "origin/main..HEAD"])
+    ahead = _git(["rev-list", "--count", "origin/main..HEAD"], cwd=addons_dir)
     try:
         ahead_count = int(ahead.stdout.strip())
     except ValueError:
         ahead_count = 0
 
-    return jsonify({"repo": os.path.basename(ADDONS_DIR), "files": files, "ahead_count": ahead_count})
+    return jsonify({"repo": os.path.basename(addons_dir), "files": files, "ahead_count": ahead_count})
 
 
 CONTEXT_LINES = 3
 
 
-def _file_lines(path, ref=None):
+def _file_lines(path, addons_dir, ref=None):
     """File content as a list of lines, either from the working tree
     (ref=None) or a git ref (e.g. 'HEAD'). Empty list if the file doesn't
     exist there -- covers new/deleted files without a special case."""
     if ref:
-        result = _git(["show", f"{ref}:{path}"])
+        result = _git(["show", f"{ref}:{path}"], cwd=addons_dir)
         return result.stdout.splitlines() if result.returncode == 0 else []
-    full = os.path.join(ADDONS_DIR, path)
+    full = os.path.join(addons_dir, path)
     if not os.path.isfile(full):
         return []
     with open(full, errors="replace") as f:
@@ -341,11 +359,11 @@ def _word_spans(old_line, new_line):
     return old_spans, new_spans
 
 
-def _file_diff_hunks(path, status_code):
+def _file_diff_hunks(path, status_code, addons_dir):
     is_new = "A" in status_code or "?" in status_code
     is_deleted = "D" in status_code
-    old_lines = [] if is_new else _file_lines(path, "HEAD")
-    new_lines = [] if is_deleted else _file_lines(path)
+    old_lines = [] if is_new else _file_lines(path, addons_dir, "HEAD")
+    new_lines = [] if is_deleted else _file_lines(path, addons_dir)
 
     hunks = []
     ops = difflib.SequenceMatcher(None, old_lines, new_lines).get_opcodes()
@@ -386,27 +404,29 @@ def _file_diff_hunks(path, status_code):
     return hunks
 
 
-@app.route("/api/git/diff")
-def api_git_diff():
-    status = _git(["status", "--porcelain"])
+@app.route("/api/git/diff/<client_id>")
+def api_git_diff(client_id):
+    addons_dir = client_addons_dir(client_id)
+    status = _git(["status", "--porcelain"], cwd=addons_dir)
     files = []
     for line in status.stdout.splitlines():
         if not line.strip():
             continue
         code, path = line[:2].strip(), line[3:]
-        files.append({"path": path, "hunks": _file_diff_hunks(path, code)})
+        files.append({"path": path, "hunks": _file_diff_hunks(path, code, addons_dir)})
     return jsonify({"files": files})
 
 
-@app.route("/api/send-for-review", methods=["POST"])
-def api_send_for_review():
+@app.route("/api/send-for-review/<client_id>", methods=["POST"])
+def api_send_for_review(client_id):
+    addons_dir = client_addons_dir(client_id)
     message = (request.json or {}).get("message", "").strip()
     if not message:
         return jsonify({"error": "Describe what changed before sending -- a few words is enough."}), 400
 
-    status = _git(["status", "--porcelain"])
+    status = _git(["status", "--porcelain"], cwd=addons_dir)
     dirty = bool(status.stdout.strip())
-    ahead = _git(["rev-list", "--count", "origin/main..HEAD"])
+    ahead = _git(["rev-list", "--count", "origin/main..HEAD"], cwd=addons_dir)
     try:
         ahead_count = int(ahead.stdout.strip())
     except ValueError:
@@ -419,9 +439,9 @@ def api_send_for_review():
     if not dirty and ahead_count == 0:
         return jsonify({"error": "Nothing to send."}), 400
 
-    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=addons_dir).stdout.strip()
     if branch != "main":
-        _git(["checkout", "main"])
+        _git(["checkout", "main"], cwd=addons_dir)
 
     if ahead_count > 0:
         # Collapse any prior Save Changes checkpoints (generic "manual
@@ -429,35 +449,36 @@ def api_send_for_review():
         # commit that actually gets pushed carries the real description
         # just typed here, not a placeholder. Soft reset keeps every file
         # change intact, only undoes the commits themselves.
-        _git(["reset", "--soft", "origin/main"])
+        _git(["reset", "--soft", "origin/main"], cwd=addons_dir)
 
-    _git(["add", "-A"])
-    commit = _git(["commit", "-m", message])
+    _git(["add", "-A"], cwd=addons_dir)
+    commit = _git(["commit", "-m", message], cwd=addons_dir)
     if commit.returncode != 0:
         return jsonify({"error": commit.stdout + commit.stderr}), 400
 
-    ok, conflict_msg = _pull_with_conflict_safety()
+    ok, conflict_msg = _pull_with_conflict_safety(addons_dir)
     if not ok:
         return jsonify({"error": conflict_msg}), 409
 
-    push = _git(["push", "origin", "main"])
+    push = _git(["push", "origin", "main"], cwd=addons_dir)
     if push.returncode != 0:
         # Rare race: someone else pushed between our pull and our push.
         # One retry covers it without bothering the dev.
-        ok2, conflict_msg2 = _pull_with_conflict_safety()
+        ok2, conflict_msg2 = _pull_with_conflict_safety(addons_dir)
         if not ok2:
             return jsonify({"error": conflict_msg2}), 409
-        push = _git(["push", "origin", "main"])
+        push = _git(["push", "origin", "main"], cwd=addons_dir)
         if push.returncode != 0:
             return jsonify({"error": "Send failed -- please try again: " + push.stdout + push.stderr}), 500
 
     return jsonify({"ok": True})
 
 
-@app.route("/api/recent-sends")
-def api_recent_sends():
-    _git(["fetch", "-q", "origin", "main"])
-    log = _git(["log", "-20", "--pretty=format:%h|%an|%ar|%s", "origin/main"])
+@app.route("/api/recent-sends/<client_id>")
+def api_recent_sends(client_id):
+    addons_dir = client_addons_dir(client_id)
+    _git(["fetch", "-q", "origin", "main"], cwd=addons_dir)
+    log = _git(["log", "-20", "--pretty=format:%h|%an|%ar|%s", "origin/main"], cwd=addons_dir)
     sends = []
     for line in log.stdout.strip().splitlines():
         if "|" not in line:
