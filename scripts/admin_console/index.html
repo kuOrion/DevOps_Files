@@ -27,10 +27,14 @@
   * { box-sizing: border-box; }
   body {
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--text); margin: 0; padding: 3rem 2.5rem 4rem;
+    background: var(--bg); color: var(--text); margin: 0; padding: 2.5rem 3vw 4rem;
     font-size: 18px; line-height: 1.55;
   }
-  .wrap { max-width: 980px; margin: 0 auto; }
+  /* Matches Git Console's 2026-08-30 fix -- a hard 980px cap left the
+     grid squeezed into the middle on any wider screen for no reason; more
+     width just means more columns, already handled by the grid's own
+     auto-fit. */
+  .wrap { max-width: 1800px; margin: 0 auto; }
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; }
   .brand { display: flex; align-items: center; gap: 10px; }
   .brand-mark {
@@ -118,7 +122,9 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  /* Capped, not full-width -- 3 fixed tiles stretched across the wider
+     1800px .wrap would just be mostly empty space per tile. */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; max-width: 700px; }
   .tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.3rem; box-shadow: var(--shadow); }
   .tile-label { font-size: 13.5px; color: var(--text-secondary); margin-bottom: 6px; }
   .tile-value { font-size: 23px; font-weight: 600; }
@@ -153,9 +159,11 @@
      the red restore panel for that reason. */
   .revert-divider { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 10px; }
   .revert-link {
-    font-size: 13.5px; color: var(--text-muted); background: none; border: none; padding: 0;
-    cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--warning-text) !important;
+    background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: 8px;
+    padding: 7px 14px; cursor: pointer;
   }
+  .revert-link:hover { opacity: 0.85; }
   .revert-panel {
     margin-top: 10px; background: var(--warning-bg); border: 1px solid var(--warning-border);
     border-radius: 8px; padding: 12px 14px;
@@ -180,9 +188,11 @@
      should never read as a peer action to Review/Deploy. */
   .restore-divider { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 10px; }
   .restore-link {
-    font-size: 13.5px; color: var(--text-muted); background: none; border: none; padding: 0;
-    cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--danger-text) !important;
+    background: var(--danger-bg); border: 1px solid var(--danger-text); border-radius: 8px;
+    padding: 7px 14px; cursor: pointer;
   }
+  .restore-link:hover { opacity: 0.85; }
   .restore-panel {
     margin-top: 10px; background: var(--danger-bg); border: 1px solid var(--danger-text);
     border-radius: 8px; padding: 12px 14px;
@@ -443,6 +453,7 @@ async function confirmRevert() {
   });
   revertPanels[clientId] = { open: false, commits: null };
   refresh();
+  waitForJobThenCheckNow(clientId);
 }
 
 document.getElementById('revert-modal-confirm-btn').addEventListener('click', confirmRevert);
@@ -523,6 +534,7 @@ async function doRestore(clientId) {
   });
   restorePanels[clientId] = { open: false, backups: null, selected: null };
   refresh();
+  waitForJobThenCheckNow(clientId);
 }
 
 function renderHealth(h) {
@@ -654,6 +666,29 @@ async function stagingReachable() {
   }
 }
 
+async function waitForJobThenCheckNow(clientId) {
+  // The passive 3s poll usually catches a job finishing on its own, but
+  // relying on "usually" meant Approve-and-deploy could sit showing the
+  // pending-commits view after the deploy had genuinely already
+  // succeeded, until a manual page reload. This polls the job directly
+  // and, the moment it's no longer running, forces a real
+  // check-for-changes (not just a status re-read) before the final
+  // render, so the card reliably flips to "Live is up to date" on its
+  // own.
+  for (let i = 0; i < 90; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    let s;
+    try {
+      const res = await fetch('/api/status');
+      s = await res.json();
+    } catch (e) { continue; }
+    const c = s.clients.find(x => x.client_id === clientId);
+    if (!c || c.job.state !== 'running') break;
+  }
+  try { await fetch('/api/check-now', { method: 'POST' }); } catch (e) {}
+  refresh();
+}
+
 async function doReview(clientId) {
   pendingStagingTab = window.open('', '_blank');
   pendingStagingClient = clientId;
@@ -663,11 +698,13 @@ async function doReview(clientId) {
   }
   await fetch(`/api/review/${clientId}`, { method: 'POST' });
   refresh();
+  waitForJobThenCheckNow(clientId);
 }
 
 async function doDeploy(clientId) {
   await fetch(`/api/deploy/${clientId}`, { method: 'POST' });
   refresh();
+  waitForJobThenCheckNow(clientId);
 }
 
 async function checkNow() {
