@@ -29,10 +29,15 @@
   * { box-sizing: border-box; }
   body {
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--text); margin: 0; padding: 3rem 2.5rem 4rem;
+    background: var(--bg); color: var(--text); margin: 0; padding: 2.5rem 3vw 4rem;
     font-size: 18px; line-height: 1.55;
   }
-  .wrap { max-width: 1180px; margin: 0 auto; }
+  /* 2026-08-30: was max-width:1180px, centered -- left ~20%/right ~20% sat
+     empty on any screen wider than that while the actual client grid (the
+     whole point of this page) got squeezed into the middle. No reason for
+     a hard cap now that every client gets its own card -- more width just
+     means more columns, handled already by the grid's own auto-fit. */
+  .wrap { max-width: 1800px; margin: 0 auto; }
 
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
   .brand { display: flex; align-items: center; gap: 10px; }
@@ -48,39 +53,43 @@
 
   .section-label {
     font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--accent); margin: 2.25rem 0 10px;
+    color: var(--accent); margin: 0 0 10px;
   }
-  .section-label:first-of-type { margin-top: 0; }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  /* Wider min per card (was 260px) -- each card now carries more content
+     (run state + changes summary + up to 4 buttons) than the old
+     container-only cards did, so a narrower card wrapped awkwardly. No
+     max-width cap either (was 340px) -- on a wide screen this lets cards
+     genuinely fill the row instead of leaving whitespace next to a few
+     stretched-wide ones. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
   .card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 1.4rem 1.6rem; box-shadow: var(--shadow);
   }
-  /* Only cards inside the auto-fit clients grid get capped -- with few
-     cards, 1fr stretches each one to fill the row, which looks comically
-     wide with just one or two running clients. Other .card uses
-     (Changes, diff detail, Recent Sends) have their own explicit sizing
-     and shouldn't be capped the same way. */
-  .grid > .card { max-width: 340px; }
   .card-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
   .card-title { font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
   .badge { font-size: 13.5px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
   .badge.running { background: var(--success-bg); color: var(--success-text); }
   .badge.starting { background: var(--warning-bg); color: var(--warning-text); }
-  .badge.warn { background: var(--warning-bg); color: var(--warning-text); }
   .meta { font-size: 16px; color: var(--text-secondary); line-height: 1.9; }
 
-  .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
   button {
-    flex: 1; font: inherit; font-size: 15.5px; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+    flex: 1; font: inherit; font-size: 15px; font-weight: 600; padding: 9px 14px; border-radius: 8px;
     border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer;
     transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
-    min-width: 140px;
+    min-width: 120px;
   }
   button:hover:not(:disabled) { background: var(--surface); }
   button:active:not(:disabled) { transform: translateY(0.5px); }
   button:disabled { opacity: 0.45; cursor: default; }
+  .btn-spinner {
+    display: inline-block; width: 13px; height: 13px; margin-right: 7px;
+    border: 2px solid rgba(255,255,255,0.5); border-top-color: #fff; border-radius: 50%;
+    vertical-align: -2px; animation: btn-spin 0.7s linear infinite;
+  }
+  @keyframes btn-spin { to { transform: rotate(360deg); } }
   button.success { background: #4c8c2b; border-color: #4c8c2b; color: #fff; }
   button.success:hover:not(:disabled) { opacity: 0.9; background: #4c8c2b; }
 
@@ -89,45 +98,61 @@
     border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 10px;
   }
   input[type=text]:focus { outline: none; border-color: var(--accent); }
-  select {
-    width: 100%; font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 10px;
+
+  .changes-summary {
+    font-size: 15px; color: var(--text-secondary); margin: 12px 0 0; padding-top: 12px;
+    border-top: 1px solid var(--border);
   }
 
-  .git-file { display: flex; justify-content: space-between; font-family: ui-monospace, monospace; font-size: 14.5px; padding: 5px 0; }
-  .code-added { color: #3a7a13; } .code-modified { color: var(--accent); } .code-deleted { color: var(--danger); }
-  .divider { border-top: 1px solid var(--border); margin: 14px 0 0; padding-top: 14px; }
-
-  .progress-track {
-    height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; margin-top: 10px;
-  }
+  .progress-track { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; margin-top: 10px; }
   .progress-fill {
     height: 100%; width: 40%; border-radius: 3px; background: var(--accent-bg);
     animation: progress-slide 1.1s ease-in-out infinite;
   }
-  @keyframes progress-slide {
-    0% { margin-left: -40%; }
-    100% { margin-left: 100%; }
-  }
+  @keyframes progress-slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
   .progress-step { font-size: 14px; color: var(--text-secondary); margin-top: 8px; }
-
   .log {
     font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--text-muted);
     max-height: 100px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px;
     background: var(--surface); border-radius: 6px; padding: 6px 8px;
   }
 
-  .changes-row { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 14px; align-items: start; }
-  @media (max-width: 760px) { .changes-row { grid-template-columns: 1fr; } }
+  /* Modal -- opened per-client from a card's "Review changes". Not
+     position:fixed for the same reason none of this project's other
+     consoles use it for overlays: keeps behavior predictable and simple
+     for a page that's always the full browser viewport anyway (this is a
+     local dev tool, never embedded). */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    align-items: center; justify-content: center; padding: 3vh 2vw; z-index: 10;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 12px; width: 100%; max-width: 900px;
+    max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow);
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border); flex: none;
+  }
+  .modal-header-title { font-weight: 600; font-size: 16px; }
+  .modal-close {
+    flex: none; min-width: unset; width: 32px; height: 32px; padding: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1;
+  }
+  .modal-body { overflow-y: auto; padding: 10px 0; flex: 1 1 auto; }
+  .modal-footer {
+    flex: none; padding: 14px 20px; border-top: 1px solid var(--border);
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+  .modal-footer input[type=text] { margin-bottom: 0; }
+  .modal-footer button { flex: none; min-width: 160px; }
 
-  .diff-detail-card { min-height: 160px; max-height: 62vh; overflow-y: auto; }
-  .diff-detail-placeholder { color: var(--text-secondary); font-size: 15.5px; text-align: center; padding: 2rem 1rem; }
-  .diff-file { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+  .diff-file { margin: 0 20px 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .diff-file:last-child { margin-bottom: 0; }
   .diff-file-name {
     padding: 8px 14px; font-size: 14px; font-weight: 600; background: var(--surface);
     border-bottom: 1px solid var(--border); font-family: ui-monospace, monospace;
-    position: sticky; top: 0;
   }
   .diff-line {
     font-family: ui-monospace, monospace; font-size: 13.5px; padding: 1px 14px;
@@ -139,32 +164,25 @@
   .diff-line.skip { color: var(--text-muted); font-style: italic; padding-top: 4px; padding-bottom: 4px; }
   .diff-span-changed.add { background: rgba(99,153,34,0.3); border-radius: 2px; font-weight: 600; }
   .diff-span-changed.del { background: rgba(226,75,74,0.3); border-radius: 2px; text-decoration: line-through; }
+  .diff-empty { color: var(--text-secondary); font-size: 15px; text-align: center; padding: 1.5rem; }
 
   .commit-hash { color: var(--text-muted); font-family: ui-monospace, monospace; font-size: 13.5px; }
-
-  .sends-toggle {
-    display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
-    font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--text-muted); margin: 2.25rem 0 10px;
+  .recent-section {
+    margin: 8px 20px 0; padding-top: 12px; border-top: 1px solid var(--border);
   }
-  .sends-toggle .chev { transition: transform 0.15s ease; font-size: 11px; }
-  .sends-toggle.open .chev { transform: rotate(90deg); }
-  .sends-card { padding-top: 1rem; padding-bottom: 0.6rem; max-height: 420px; overflow-y: auto; }
-  .send-row { display: flex; gap: 10px; padding: 8px 0; }
+  .recent-label {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); margin-bottom: 8px;
+  }
+  .send-row { display: flex; gap: 10px; padding: 6px 0; }
   .avatar {
-    width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    font-size: 11.5px; font-weight: 700; color: #fff; flex: none; margin-top: 1px;
+    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 700; color: #fff; flex: none; margin-top: 1px;
   }
   .send-info { min-width: 0; }
-  .send-subject { font-size: 15.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .send-meta { font-size: 14px; color: var(--text-secondary); margin-top: 2px; }
-
-  .changes-idle { text-align: center; padding: 1rem 0.5rem; }
-  .changes-idle p { color: var(--text-secondary); font-size: 15.5px; margin: 0; }
-
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .empty-note { color: var(--text-secondary); font-weight: 500; font-size: 15.5px; padding: 6px 0; }
+  .send-subject { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .send-meta { font-size: 13px; color: var(--text-secondary); margin-top: 1px; }
+  .empty-note { color: var(--text-secondary); font-weight: 500; font-size: 15px; padding: 4px 0; }
 </style>
 </head>
 <body>
@@ -177,92 +195,38 @@
     <div class="docker-status" id="docker-status"><span class="dot" id="docker-dot"></span><span id="docker-text">checking docker...</span></div>
   </div>
 
-  <div class="section-label">Clients / Containers</div>
-  <div class="grid" id="clients-grid">
-    <div class="card" id="picker-card" style="border-style:dashed; box-shadow:none;">
-      <select id="client-picker"></select>
-      <div class="btn-row">
-        <button onclick="getLatest()" id="get-latest-btn">Get Latest</button>
-        <button onclick="startClient()" id="start-container-btn">Start Container</button>
+  <div class="section-label">Clients</div>
+  <div class="grid" id="clients-grid"></div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-header-title" id="modal-title"></span>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-diff"></div>
+      <div class="recent-section">
+        <div class="recent-label">Recent sends</div>
+        <div id="modal-recent"></div>
       </div>
     </div>
-  </div>
-
-  <div class="section-label">Changes</div>
-  <div class="changes-row" style="grid-column: 1 / -1;">
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:0.6rem;">
-      <span style="font-size:14px; color:var(--text-secondary);">Working on:</span>
-      <select id="working-on-picker" onchange="onWorkingOnChange()"></select>
+    <div class="modal-footer">
+      <input type="text" id="modal-send-msg" placeholder="Please describe changes">
+      <button class="success" onclick="sendForReview()" id="modal-send-btn">Send for Review</button>
     </div>
   </div>
-  <div class="changes-row">
-    <div class="card" id="changes-card">
-      <div id="changes-idle-view" class="changes-idle" style="display:none;">
-        <p>No changes yet in <span id="repo-name-idle" style="font-weight:600;"></span>.</p>
-      </div>
-
-      <div id="changes-active-view" style="display:none;">
-        <div class="card-title-row">
-          <span style="font-weight:600; font-size:16px;" id="repo-name-active"></span>
-          <span class="badge warn" id="changes-badge"></span>
-        </div>
-        <div id="git-files"></div>
-
-        <div class="divider">
-          <input type="text" id="send-msg" placeholder="Please describe changes" style="display:none;">
-          <div class="btn-row">
-            <button onclick="toggleDiff()" id="diff-toggle-btn">Review changes</button>
-            <button onclick="saveChanges()">Save Changes</button>
-            <button class="success" onclick="sendForReview()" id="send-btn">Send for Review</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card diff-detail-card" id="diff-detail-card">
-      <div class="diff-detail-placeholder">Click "Review changes" to see them here.</div>
-    </div>
-  </div>
-
-  <div class="sends-toggle" id="sends-toggle" onclick="toggleSends()">
-    <span class="chev">&#9656;</span> Recent Sends
-  </div>
-  <div class="card sends-card" id="sends-card" style="display:none;"></div>
 </div>
 
 <script>
-let lastStatus = null;
-let sendsOpen = false;
-let sendsLoaded = false;
-let diffOpen = false;
+let clientsData = [];
+let jobsData = {};
+let gitData = {};
+let currentModalClient = null;
 
-// "Working on" -- which client's code the Changes/diff/Send for Review
-// panel operates on. Persisted in localStorage so it survives a page
-// reload (a dev mid-edit shouldn't have to re-pick it every time).
-// Separate from #client-picker (which only ever lists STOPPED clients,
-// for starting a container) -- this needs to stay selectable even while
-// a container is running, since git status doesn't depend on that.
-let currentGitClient = localStorage.getItem('erp16_git_console_client') || null;
-let allClientIds = [];
-
-function onWorkingOnChange() {
-  currentGitClient = document.getElementById('working-on-picker').value;
-  localStorage.setItem('erp16_git_console_client', currentGitClient);
-  sendsLoaded = false;
-  if (diffOpen) { diffOpen = false; toggleDiff(); }
-  refreshChanges();
-  if (sendsOpen) refreshSends();
-}
-
-function populateWorkingOnPicker(clients) {
-  allClientIds = clients.map(c => c.client_id);
-  if (!currentGitClient || !allClientIds.includes(currentGitClient)) {
-    currentGitClient = allClientIds[0] || null;
-  }
-  const picker = document.getElementById('working-on-picker');
-  const optionsHtml = clients.map(c => `<option value="${c.client_id}">${c.display_name}</option>`).join('');
-  if (picker.innerHTML !== optionsHtml) picker.innerHTML = optionsHtml;
-  if (currentGitClient) picker.value = currentGitClient;
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 }
 
 function stepLabel(logLines) {
@@ -271,144 +235,90 @@ function stepLabel(logLines) {
   return last.replace(/^===\s*/, '').replace(/\s*===$/, '') || 'Working...';
 }
 
-let lastStoppedKey = null;
-
-async function refreshClients() {
-  const res = await fetch('/api/clients');
-  const data = await res.json();
-
-  const hadClient = !!currentGitClient;
-  populateWorkingOnPicker(data.clients);
-  if (!hadClient && currentGitClient) { refreshChanges(); }
-
-  const runningIds = new Set(data.clients.filter(c => c.running).map(c => c.client_id));
-  const startingIds = Object.keys(data.jobs).filter(id => data.jobs[id].state === 'running' && !runningIds.has(id));
-  const runningCards = data.clients.filter(c => c.running);
-  const stoppedIds = data.clients.filter(c => !c.running && !startingIds.includes(c.client_id)).map(c => c.client_id);
-
-  // The picker card (#picker-card) is a STABLE element, defined once in
-  // the static HTML and never recreated here -- rebuilding it every 3s
-  // poll (the old approach) forcibly closed the native <select> dropdown
-  // if it happened to be open, and silently reset whatever the user had
-  // picked. Only touch what actually needs to change.
-  const stoppedKey = stoppedIds.join(',');
-  if (stoppedKey !== lastStoppedKey) {
-    lastStoppedKey = stoppedKey;
-    const picker = document.getElementById('client-picker');
-    const previousSelection = picker.value;
-    picker.innerHTML = stoppedIds.map(id => `<option value="${id}">${id}</option>`).join('');
-    if (stoppedIds.includes(previousSelection)) picker.value = previousSelection;
+function changesSummary(git) {
+  if (!git) return null;
+  if (git.files.length) {
+    let added = 0, removed = 0;
+    git.files.forEach(f => { added += parseInt(f.added) || 0; removed += parseInt(f.removed) || 0; });
+    return `${git.files.length} file${git.files.length === 1 ? '' : 's'} changed &middot; +${added} -${removed}`;
   }
-  const anyBusy = startingIds.length > 0 || Object.values(data.jobs).some(j => j.state === 'running');
-  const pickerDisabled = anyBusy || !stoppedIds.length;
-  document.getElementById('get-latest-btn').disabled = pickerDisabled;
-  document.getElementById('start-container-btn').disabled = pickerDisabled;
-
-  // Dynamic cards (starting/running) live after #picker-card in DOM
-  // order (picker stays first/leftmost) -- remove and reinsert just
-  // these each poll, never touching the picker card itself.
-  document.querySelectorAll('.dynamic-client-card').forEach(el => el.remove());
-  let dynamicHtml = '';
-
-  // Clients mid Get Latest / Start Container, before Docker even reports
-  // them as running yet (rendering/pulling/restoring can take 20-100+s
-  // on a cold pull) -- their own card, so something is visibly happening
-  // instead of the UI looking frozen.
-  for (const id of startingIds) {
-    const job = data.jobs[id];
-    dynamicHtml += `
-      <div class="card dynamic-client-card">
-        <div class="card-title-row">
-          <span class="card-title">${id}</span>
-          <span class="badge starting">Starting</span>
-        </div>
-        <div class="progress-step">${stepLabel(job.log)}</div>
-        <div class="progress-track"><div class="progress-fill"></div></div>
-        <div class="log">${(job.log || []).slice(-6).join('\\n')}</div>
-      </div>`;
-  }
-
-  for (const c of runningCards) {
-    const job = data.jobs[c.client_id];
-    const busy = job && job.state === 'running';
-    dynamicHtml += `
-      <div class="card dynamic-client-card">
-        <div class="card-title-row">
-          <span class="card-title">${c.display_name}</span>
-          <span class="badge running">Running</span>
-        </div>
-        <div class="meta">
-          <div><a href="${c.url}" target="_blank">${c.url}</a></div>
-        </div>
-        <div class="btn-row">
-          <button onclick="window.open('${c.url}')">Open</button>
-          <button onclick="stopClient('${c.client_id}')" ${busy ? 'disabled' : ''}>${busy ? 'Working...' : 'Stop'}</button>
-        </div>
-        ${busy ? `
-          <div class="progress-step">${stepLabel(job.log)}</div>
-          <div class="progress-track"><div class="progress-fill"></div></div>
-          <div class="log">${(job.log || []).slice(-6).join('\\n')}</div>` : ''}
-      </div>`;
-  }
-
-  document.getElementById('picker-card').insertAdjacentHTML('afterend', dynamicHtml);
+  if (git.ahead_count) return `${git.ahead_count} saved, ready to send`;
+  return null;
 }
 
-async function startClient() {
-  const id = document.getElementById('client-picker').value;
-  await fetch(`/api/start/${id}`, {method: 'POST'});
+function renderClientCard(c) {
+  const job = jobsData[c.client_id] || { state: 'idle', log: [] };
+  const git = gitData[c.client_id];
+  const busy = job.state === 'running';
+  const summary = changesSummary(git);
+
+  let html = '<div class="card">';
+  html += '<div class="card-title-row">';
+  html += `<span class="card-title">${escapeHtml(c.display_name)}</span>`;
+  html += `<span class="badge ${busy ? 'starting' : c.running ? 'running' : ''}" style="${!busy && !c.running ? 'background:var(--surface);color:var(--text-secondary);' : ''}">${busy ? 'Working' : c.running ? 'Running' : 'Stopped'}</span>`;
+  html += '</div>';
+
+  if (busy) {
+    html += `<div class="progress-step">${escapeHtml(stepLabel(job.log))}</div>`;
+    html += '<div class="progress-track"><div class="progress-fill"></div></div>';
+    html += `<div class="log">${escapeHtml((job.log || []).slice(-6).join('\n'))}</div>`;
+  } else if (c.running) {
+    html += `<div class="meta"><a href="${c.url}" target="_blank">${c.url}</a></div>`;
+    html += `<div class="btn-row"><button onclick="window.open('${c.url}')">Open</button><button onclick="stopClient('${c.client_id}')">Stop</button></div>`;
+  } else {
+    html += `<div class="btn-row"><button onclick="getLatest('${c.client_id}')">Get Latest</button><button onclick="startClient('${c.client_id}')">Start Container</button></div>`;
+  }
+
+  if (!busy && git && git.not_cloned) {
+    html += `<div class="changes-summary">Not cloned locally yet -- run <code>git clone git@github.com:kuOrion/erp16-${c.client_id}.git ${escapeHtml(git.repo)}</code> as a sibling of this checkout.</div>`;
+  } else if (!busy && summary) {
+    html += `<div class="changes-summary">${summary}</div>`;
+    html += '<div class="btn-row">';
+    html += `<button onclick="openModal('${c.client_id}')">Review changes</button>`;
+    html += `<button onclick="saveChanges('${c.client_id}')">Save Changes</button>`;
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+async function refreshClients() {
+  const [clientsRes, gitRes] = await Promise.all([
+    fetch('/api/clients'),
+    fetch('/api/git/status-all'),
+  ]);
+  const clientsPayload = await clientsRes.json();
+  gitData = await gitRes.json();
+  clientsData = clientsPayload.clients;
+  jobsData = clientsPayload.jobs;
+
+  document.getElementById('clients-grid').innerHTML = clientsData.map(renderClientCard).join('');
+}
+
+async function startClient(id) {
+  await fetch(`/api/start/${id}`, { method: 'POST' });
   refreshClients();
 }
 
-async function getLatest() {
-  const id = document.getElementById('client-picker').value;
-  await fetch(`/api/get-latest/${id}`, {method: 'POST'});
+async function getLatest(id) {
+  await fetch(`/api/get-latest/${id}`, { method: 'POST' });
   refreshClients();
 }
 
 async function stopClient(id) {
-  await fetch(`/api/stop/${id}`, {method: 'POST'});
+  await fetch(`/api/stop/${id}`, { method: 'POST' });
   refreshClients();
-  refreshChanges();
 }
 
-async function refreshChanges() {
-  if (!currentGitClient) return;
-  const res = await fetch(`/api/git/status/${currentGitClient}`);
-  const data = await res.json();
-  lastStatus = data;
-
-  const idleView = document.getElementById('changes-idle-view');
-  const activeView = document.getElementById('changes-active-view');
-
-  if (!data.files.length && !data.ahead_count) {
-    idleView.style.display = 'block';
-    activeView.style.display = 'none';
-    document.getElementById('repo-name-idle').textContent = data.repo;
-    return;
+async function saveChanges(id) {
+  const res = await fetch(`/api/save-changes/${id}`, { method: 'POST' });
+  if (res.ok) {
+    refreshClients();
+  } else {
+    const err = await res.json();
+    alert(err.error || 'Nothing to save.');
   }
-
-  idleView.style.display = 'none';
-  activeView.style.display = 'block';
-  document.getElementById('repo-name-active').textContent = data.repo;
-
-  const badge = document.getElementById('changes-badge');
-  // Saved-but-unsent state: no uncommitted files (Save Changes already
-  // committed them locally), but real commits sitting ahead of origin/main
-  // that Send for Review still needs to push -- keep that button visible
-  // and say so explicitly rather than showing a stale/misleading count.
-  badge.textContent = data.files.length
-    ? `${data.files.length} unsaved`
-    : `${data.ahead_count} saved, ready to send`;
-
-  document.getElementById('git-files').innerHTML = data.files.map(f => {
-    const cls = f.code.includes('A') ? 'code-added' : f.code.includes('D') ? 'code-deleted' : 'code-modified';
-    return `<div class="git-file"><span><span class="${cls}">${f.code}</span>&nbsp;&nbsp;${f.path}</span><span style="color:var(--text-muted)">+${f.added} -${f.removed}</span></div>`;
-  }).join('');
-}
-
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 }
 
 function renderSpans(spans, kind) {
@@ -428,67 +338,6 @@ function renderHunks(hunks) {
   }).join('');
 }
 
-async function toggleDiff() {
-  const panel = document.getElementById('diff-detail-card');
-  const btn = document.getElementById('diff-toggle-btn');
-  diffOpen = !diffOpen;
-  if (!diffOpen) {
-    panel.innerHTML = '<div class="diff-detail-placeholder">Click "Review changes" to see them here.</div>';
-    btn.textContent = 'Review changes';
-    return;
-  }
-  btn.textContent = 'Hide changes';
-  const res = await fetch(`/api/git/diff/${currentGitClient}`);
-  const data = await res.json();
-  panel.innerHTML = data.files.map(f => `
-    <div class="diff-file">
-      <div class="diff-file-name">${f.path}</div>
-      ${renderHunks(f.hunks)}
-    </div>`).join('') || '<div class="diff-detail-placeholder">No changes</div>';
-}
-
-async function saveChanges() {
-  const res = await fetch(`/api/save-changes/${currentGitClient}`, {method: 'POST'});
-  if (res.ok) {
-    refreshChanges();
-    if (diffOpen) toggleDiff();
-  } else {
-    const err = await res.json();
-    alert(err.error || 'Nothing to save.');
-  }
-}
-
-async function sendForReview() {
-  const box = document.getElementById('send-msg');
-  if (box.style.display !== 'block') {
-    box.style.display = 'block';
-    box.focus();
-    return;
-  }
-  const message = box.value.trim();
-  if (!message) { alert('Please describe changes first -- a few words is enough.'); return; }
-  const res = await fetch(`/api/send-for-review/${currentGitClient}`, {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({message}),
-  });
-  if (res.ok) {
-    box.value = '';
-    box.style.display = 'none';
-    if (diffOpen) toggleDiff();
-    refreshChanges();
-    if (sendsOpen) refreshSends();
-  } else {
-    const err = await res.json();
-    alert(err.error || 'Could not send for review.');
-  }
-}
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'send-msg') {
-    sendForReview();
-  }
-});
-
 function avatarColor(name) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -499,31 +348,83 @@ function initials(name) {
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
 }
 
-async function refreshSends() {
-  if (!currentGitClient) return;
-  const res = await fetch(`/api/recent-sends/${currentGitClient}`);
-  const data = await res.json();
-  const el = document.getElementById('sends-card');
-  if (!data.sends.length) {
-    el.innerHTML = '<div class="empty-note">No sends yet</div>';
-    return;
+async function openModal(id) {
+  currentModalClient = id;
+  const c = clientsData.find(x => x.client_id === id);
+  document.getElementById('modal-title').textContent = (c ? c.display_name : id);
+  document.getElementById('modal-send-msg').value = '';
+  document.getElementById('modal-diff').innerHTML = '<div class="diff-empty">Loading...</div>';
+  document.getElementById('modal-recent').innerHTML = '';
+  document.getElementById('modal-overlay').classList.add('open');
+
+  const [diffRes, sendsRes] = await Promise.all([
+    fetch(`/api/git/diff/${id}`),
+    fetch(`/api/recent-sends/${id}`),
+  ]);
+  const diffData = await diffRes.json();
+  document.getElementById('modal-diff').innerHTML = diffData.files.map(f => `
+    <div class="diff-file">
+      <div class="diff-file-name">${escapeHtml(f.path)}</div>
+      ${renderHunks(f.hunks)}
+    </div>`).join('') || '<div class="diff-empty">No uncommitted changes -- everything here is already saved and just needs sending.</div>';
+
+  const sendsData = await sendsRes.json();
+  const recentEl = document.getElementById('modal-recent');
+  if (!sendsData.sends.length) {
+    recentEl.innerHTML = '<div class="empty-note">No sends yet</div>';
+  } else {
+    recentEl.innerHTML = sendsData.sends.slice(0, 8).map(s => `
+      <div class="send-row">
+        <span class="avatar" style="background:${avatarColor(s.author)}">${initials(s.author)}</span>
+        <div class="send-info">
+          <div class="send-subject">${escapeHtml(s.subject)}</div>
+          <div class="send-meta">${escapeHtml(s.author)} &middot; ${escapeHtml(s.when)} &middot; <span class="commit-hash">${s.hash}</span></div>
+        </div>
+      </div>`).join('');
   }
-  el.innerHTML = data.sends.map(s => `
-    <div class="send-row">
-      <span class="avatar" style="background:${avatarColor(s.author)}">${initials(s.author)}</span>
-      <div class="send-info">
-        <div class="send-subject">${s.subject}</div>
-        <div class="send-meta">${s.author} &middot; ${s.when} &middot; <span class="commit-hash">${s.hash}</span></div>
-      </div>
-    </div>`).join('');
 }
 
-function toggleSends() {
-  sendsOpen = !sendsOpen;
-  document.getElementById('sends-toggle').classList.toggle('open', sendsOpen);
-  document.getElementById('sends-card').style.display = sendsOpen ? 'block' : 'none';
-  if (sendsOpen && !sendsLoaded) { sendsLoaded = true; refreshSends(); }
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  currentModalClient = null;
 }
+
+async function sendForReview() {
+  if (!currentModalClient) return;
+  const btn = document.getElementById('modal-send-btn');
+  if (btn.disabled) return;  // already in flight -- ignore repeat clicks/Enter presses
+  const box = document.getElementById('modal-send-msg');
+  const message = box.value.trim();
+  if (!message) { alert('Please describe changes first -- a few words is enough.'); return; }
+  const originalLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>Sending...';
+  try {
+    const res = await fetch(`/api/send-for-review/${currentModalClient}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message}),
+    });
+    if (res.ok) {
+      closeModal();
+      refreshClients();
+    } else {
+      const err = await res.json();
+      alert(err.error || 'Could not send for review.');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalLabel;
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'modal-send-msg') {
+    sendForReview();
+  }
+  if (e.key === 'Escape' && document.getElementById('modal-overlay').classList.contains('open')) {
+    closeModal();
+  }
+});
 
 async function refreshDockerStatus() {
   try {
@@ -539,8 +440,6 @@ async function refreshDockerStatus() {
 function refreshAll() {
   refreshDockerStatus();
   refreshClients();
-  refreshChanges();
-  if (sendsOpen) refreshSends();
 }
 
 refreshAll();

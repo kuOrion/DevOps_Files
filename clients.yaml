@@ -127,7 +127,7 @@ clients:
       monthly_snapshot_retention_months: 12
 
   orion_test:
-    display_name: "Orion Test (internal duplicate of orion-internal)"
+    display_name: "Orion Test"
     db_name: orion_test
     odoo_version: "16.0"
     postgres_version: "14.15"
@@ -356,7 +356,7 @@ clients:
       monthly_snapshot_retention_months: 12
 
   earthmech:
-    display_name: "Earthmech (on-prem understudy)"
+    display_name: "Earthmech"
     db_name: earthmech
     odoo_version: "16.0"
     postgres_version: "14.15"

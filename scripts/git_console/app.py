@@ -257,7 +257,17 @@ def api_job(client_id):
 def _run_get_latest(client_id):
     with _jobs_lock:
         _jobs[client_id] = {"state": "running", "log": ["Pulling latest code..."]}
-    ok, msg = _safe_pull_latest(f"get latest before working on {client_id}", client_addons_dir(client_id))
+    addons_dir = client_addons_dir(client_id)
+    # Same gap as _git_status_dict -- a client whose local erp16-<id>
+    # folder was never cloned would otherwise crash _safe_pull_latest deep
+    # inside a background thread with no exception handling, leaving the
+    # job stuck at "running" forever instead of showing a real error.
+    if not os.path.isdir(addons_dir):
+        _job_log(client_id, f"'{addons_dir}' doesn't exist yet -- clone it first: git clone git@github.com:kuOrion/erp16-{client_id}.git {addons_dir}")
+        with _jobs_lock:
+            _jobs[client_id]["state"] = "error"
+        return
+    ok, msg = _safe_pull_latest(f"get latest before working on {client_id}", addons_dir)
     _job_log(client_id, msg or "Code up to date.")
     if not ok:
         with _jobs_lock:
@@ -286,9 +296,20 @@ def api_get_latest(client_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/git/status/<client_id>")
-def api_git_status(client_id):
+def _git_status_dict(client_id):
     addons_dir = client_addons_dir(client_id)
+    # 2026-08-30: found live rolling out the per-client-card grid --
+    # client_addons_dir() for a migrated client always points at
+    # erp16-<client_id> (docstring above: "no per-developer setup is
+    # needed beyond `git clone` once"), but that assumes it's actually
+    # been cloned. A real dev laptop typically only has the 1-2 clients
+    # someone's actively working on, not all 5 -- fine for the old
+    # dropdown (you'd only ever select one you'd cloned), but the new bulk
+    # status-all call hits every client, including ones nobody's set up
+    # here yet. Subprocess.run raises FileNotFoundError on a missing cwd,
+    # not a git error -- checked before ever shelling out.
+    if not os.path.isdir(addons_dir):
+        return {"repo": os.path.basename(addons_dir), "files": [], "ahead_count": 0, "not_cloned": True}
     status = _git(["status", "--porcelain"], cwd=addons_dir)
     files = []
     # splitlines() on the raw stdout, NOT stdout.strip() first -- porcelain
@@ -320,7 +341,23 @@ def api_git_status(client_id):
     except ValueError:
         ahead_count = 0
 
-    return jsonify({"repo": os.path.basename(addons_dir), "files": files, "ahead_count": ahead_count})
+    return {"repo": os.path.basename(addons_dir), "files": files, "ahead_count": ahead_count, "not_cloned": False}
+
+
+@app.route("/api/git/status/<client_id>")
+def api_git_status(client_id):
+    return jsonify(_git_status_dict(client_id))
+
+
+# 2026-08-30: per-client-card redesign -- every client's card shows its own
+# changes summary at a glance now, not just whichever one a dropdown had
+# selected. One bulk call per poll instead of N sequential per-client
+# requests (each is already cheap -- a git status/diff/rev-list on a local
+# repo -- but N of them serialized over HTTP adds up on every 3s poll).
+@app.route("/api/git/status-all")
+def api_git_status_all():
+    clients = load_clients()
+    return jsonify({cid: _git_status_dict(cid) for cid in clients})
 
 
 CONTEXT_LINES = 3
