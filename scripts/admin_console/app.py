@@ -340,24 +340,44 @@ def _job_log(client_id, line):
         _client_jobs[client_id]["log"].append(line)
 
 
-def _wait_for_staging_healthy(timeout_seconds=60):
-    """Polls for a real HTTP 200 on /web/login after a container restart --
-    `docker restart` returning success only means the container process
-    started, not that Odoo has finished loading modules/building its
-    registry. No asset-URL check like deploy.sh's -- staging is
-    admin-only and reviewed visually right after, so login=200 is enough
-    signal that Odoo is actually accepting requests again."""
+def _wait_for_staging_healthy(db_name, timeout_seconds=60):
+    """Polls for a real HTTP 200 on THIS SPECIFIC client's database login,
+    not just a bare /web/login.
+
+    Found live 2026-09-05, via the synthetic failure test this whole
+    review pipeline exists to survive: staging is a shared, multi-database
+    container (list_db=true) -- a bare `/web/login` with no db selected
+    just serves a generic database-selector page, which returns 200
+    whether or not any specific database's module registry would even
+    load. Odoo lazy-loads a database's registry only once something
+    actually asks for that database by name. A deliberately broken commit
+    (a real Python SyntaxError) passed the old bare check cleanly and
+    reported "healthy" -- the check had genuinely never touched the
+    broken code. Confirmed live: `?db=<name>` needs a real session
+    (cookie-aware, matching what a browser does across the redirect that
+    selects the db) to actually reach the crash -- a single stateless
+    request without cookies just bounces through Odoo's own db-selection
+    redirect forever and never gets there either."""
+    import http.cookiejar
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    url = f"http://127.0.0.1:{STAGING_PORT}/web/login?db={db_name}"
     deadline = time.time() + timeout_seconds
-    url = f"http://127.0.0.1:{STAGING_PORT}/web/login"
+    last_detail = "timed out waiting for a response"
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=5) as resp:
+            with opener.open(url, timeout=10) as resp:
                 if resp.status == 200:
-                    return True
-        except (urllib.error.URLError, OSError):
-            pass
+                    return True, None
+                last_detail = f"HTTP {resp.status}"
+        except urllib.error.HTTPError as e:
+            if e.code == 500:
+                return False, f"HTTP 500 -- '{db_name}' database failed to load (real error, not a timing fluke -- check `docker logs staging-web` for the traceback)"
+            last_detail = f"HTTP {e.code}"
+        except (urllib.error.URLError, OSError) as e:
+            last_detail = str(e)
         time.sleep(2)
-    return False
+    return False, last_detail
 
 
 def _render_staging_for(addons_path):
@@ -479,9 +499,11 @@ def _run_review(client_id):
             _client_jobs[client_id]["state"] = "error"
         return
 
-    _job_log(client_id, "Waiting for staging-web to actually accept requests...")
-    if not _wait_for_staging_healthy():
-        _job_log(client_id, "staging-web did not come up healthy within 60s -- check `docker logs staging-web` before trusting the review.")
+    _job_log(client_id, "Waiting for staging-web to actually accept requests for this client's own database...")
+    db_name = _clients_yaml().get(client_id, {}).get("db_name", client_id)
+    ok, detail = _wait_for_staging_healthy(db_name)
+    if not ok:
+        _job_log(client_id, f"staging-web did not come up healthy within 60s ({detail}) -- do not deploy this until it's fixed.")
         with _job_lock:
             _client_jobs[client_id]["state"] = "error"
         return
