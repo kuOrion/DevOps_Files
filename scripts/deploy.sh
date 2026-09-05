@@ -41,8 +41,16 @@ fail() { echo "ERROR: $1" >&2; exit 1; }
 # are inherently low-volume and this is the only durable record that a
 # deploy happened at all, since deploy.sh previously only ever printed to
 # stdout and nothing persisted after the terminal closed.
+# Best-effort only -- an admin reading deploy history wants to know WHAT
+# shipped, not just its hash. Never allowed to fail the actual deploy or
+# its audit log over this: an unreadable worktree just leaves it blank.
+commit_subject() {
+    local worktree="$1" commit="$2"
+    git -C "$worktree" log -1 --format=%s "$commit" 2>/dev/null
+}
+
 write_deploy_log() {
-    local result="$1" target="$2" previous="$3" clients="$4" failed="$5" duration="$6"
+    local result="$1" target="$2" previous="$3" clients="$4" failed="$5" duration="$6" subject="${7:-}"
     mkdir -p "$DEPLOY_LOG_DIR"
     local logfile="$DEPLOY_LOG_DIR/$(date -u +%Y-%m-%d).jsonl"
     # Environment variables, not string-interpolated into the python
@@ -52,15 +60,18 @@ write_deploy_log() {
     # instant it contains more than one client (found live, 2026-08-06):
     # the shell substitutes the newline in place, and Python can't parse
     # a raw newline inside '...'. Env vars sidestep this whole class of
-    # bug regardless of what characters end up in any of these values.
+    # bug regardless of what characters end up in any of these values --
+    # including a commit subject, which can contain quotes/apostrophes.
     DEPLOY_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     DEPLOY_RESULT="$result" DEPLOY_TARGET="$target" DEPLOY_PREVIOUS="$previous" \
     DEPLOY_CLIENTS="$clients" DEPLOY_FAILED="$failed" DEPLOY_DURATION="$duration" \
+    DEPLOY_SUBJECT="$subject" \
     python3 -c "
 import json, os
 entry = {
     'ts': os.environ['DEPLOY_TS'],
     'source': 'deploy',
+    'commit_subject': os.environ['DEPLOY_SUBJECT'],
     'level': 'audit',
     'result': os.environ['DEPLOY_RESULT'],
     'target_commit': os.environ['DEPLOY_TARGET'],
@@ -290,7 +301,7 @@ deploy_client() {
     echo "--- Step 3/3: restart + healthcheck ---"
     if restart_and_check "$client_id"; then
         echo "=== [$client_id] DEPLOY SUCCEEDED on $target ==="
-        write_deploy_log "success" "$target" "$previous_commit" "$client_id" "" "$(( $(date +%s) - start_ts ))"
+        write_deploy_log "success" "$target" "$previous_commit" "$client_id" "" "$(( $(date +%s) - start_ts ))" "$(commit_subject "$(client_live_worktree "$client_id")" "$target")"
         return 0
     fi
 
@@ -301,7 +312,7 @@ deploy_client() {
         echo "=== [$client_id] WARNING: still unhealthy after rollback -- needs manual attention ==="
     fi
     echo "=== [$client_id] ROLLBACK COMPLETE: reverted to $previous_commit ==="
-    write_deploy_log "rolled_back" "$target" "$previous_commit" "$client_id" "$client_id" "$(( $(date +%s) - start_ts ))"
+    write_deploy_log "rolled_back" "$target" "$previous_commit" "$client_id" "$client_id" "$(( $(date +%s) - start_ts ))" "$(commit_subject "$(client_live_worktree "$client_id")" "$target")"
     return 1
 }
 
@@ -591,7 +602,7 @@ full_deploy() {
 
     if [ -z "$failed" ]; then
         echo "=== DEPLOY SUCCEEDED: all clients healthy on $target ==="
-        write_deploy_log "success" "$target" "$previous_commit" "$clients" "" "$(( $(date +%s) - start_ts ))"
+        write_deploy_log "success" "$target" "$previous_commit" "$clients" "" "$(( $(date +%s) - start_ts ))" "$(commit_subject "$LIVE_WORKTREE" "$target")"
         echo
         echo "--- earthmech release sync (only fires if configured modules changed) ---"
         sync_earthmech_release "$target" || echo "=== [earthmech] sync failed -- does NOT affect the cloud deploy above, investigate separately ==="
@@ -614,7 +625,7 @@ full_deploy() {
     echo "Reverted to:             $previous_commit"
     echo "Clients that failed the healthcheck on $target:$failed"
     echo "All clients' data + code restored to pre-deploy state."
-    write_deploy_log "rolled_back" "$target" "$previous_commit" "$clients" "$failed" "$(( $(date +%s) - start_ts ))"
+    write_deploy_log "rolled_back" "$target" "$previous_commit" "$clients" "$failed" "$(( $(date +%s) - start_ts ))" "$(commit_subject "$LIVE_WORKTREE" "$target")"
     return 1
 }
 

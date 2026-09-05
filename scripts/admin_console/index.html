@@ -132,11 +132,13 @@
   .tile-value.warn { color: var(--warning-text); }
 
   .history-row {
-    display: grid; grid-template-columns: 100px 100px 1fr 90px 70px; gap: 10px; align-items: center;
+    display: grid; grid-template-columns: 100px 100px 150px 1fr 90px 70px; gap: 10px; align-items: center;
     padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14.5px;
   }
   .history-row:last-child { border-bottom: none; }
   .history-time { color: var(--text-muted); font-size: 13.5px; }
+  .history-subject { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .history-subject.unknown { color: var(--text-muted); font-style: italic; }
   .badge { font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; justify-self: start; }
   .badge.success { background: var(--success-bg); color: var(--success-text); }
   .badge.rolled_back { background: var(--danger-bg); color: var(--danger-text); }
@@ -560,10 +562,18 @@ function renderHistory(rows) {
     const when = new Date(r.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const clients = r.clients || [];
     const scope = clients.length > 1 ? clients.join(', ') : (clients[0] || '--');
+    // commit_subject only exists on entries written after this field was
+    // added -- older log lines predate it, shown as "(unknown)" rather
+    // than blank so it's clear that's a gap in the record, not that the
+    // commit genuinely had no message.
+    const subject = r.commit_subject
+      ? '<span class="history-subject" title="' + esc(r.commit_subject) + '">' + esc(r.commit_subject) + '</span>'
+      : '<span class="history-subject unknown">(unknown)</span>';
     return '<div class="history-row">' +
       '<span class="history-time">' + esc(when) + '</span>' +
       '<span class="badge ' + badgeClass + '">' + badgeLabel + '</span>' +
       '<span class="history-scope">' + esc(scope) + '</span>' +
+      subject +
       '<span class="history-hash">' + esc((r.target_commit || '').slice(0, 7)) + '</span>' +
       '<span class="history-dur">' + esc(r.duration_seconds) + 's</span>' +
     '</div>';
