@@ -645,6 +645,68 @@ def api_restore(client_id):
     return jsonify({"ok": True})
 
 
+def _run_revert(client_id, target_commit):
+    """Code-only revert -- puts a client's code back to an arbitrary past
+    commit, deliberately leaving today's real data (orders, records)
+    completely untouched. Smaller blast radius than snapshot restore
+    (which also replaces data), so it's the thing to reach for when a bad
+    code change is the actual problem, not the data.
+
+    Reuses deploy-client wholesale (same backup -> promote -> healthcheck
+    -> auto-rollback path a normal deploy already goes through) --
+    the only difference from api_deploy is that the target commit comes
+    from history, not always origin_commit."""
+    with _job_lock:
+        job = _client_jobs.setdefault(client_id, {"kind": None, "state": "idle", "log": []})
+        if job["state"] == "running":
+            return
+        job.update({"kind": "revert", "state": "running", "log": [f"Reverting code to {target_commit[:7]} (data untouched)..."]})
+
+    clients = real_clients()
+    if not client_has_own_repo(client_id, clients):
+        _job_log(client_id, "This client still shares its repo with others -- code-only revert isn't possible without moving them too.")
+        with _job_lock:
+            _client_jobs[client_id]["state"] = "error"
+        return
+
+    _, _, fetch_checkout = client_worktrees(client_id, clients)
+    verify = _git(["cat-file", "-e", target_commit + "^{commit}"], cwd=fetch_checkout)
+    if verify.returncode != 0:
+        _job_log(client_id, f"'{target_commit}' isn't a real commit in this client's repo history.")
+        with _job_lock:
+            _client_jobs[client_id]["state"] = "error"
+        return
+
+    proc = subprocess.Popen(
+        [DEPLOY_SH, "deploy-client", client_id, target_commit],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+    )
+    for line in proc.stdout:
+        _job_log(client_id, line.rstrip("\n"))
+    proc.wait()
+
+    _refresh_client_state(client_id, do_fetch=False, clients=clients)
+    with _job_lock:
+        _client_jobs[client_id]["state"] = "done" if proc.returncode == 0 else "error"
+
+
+@app.route("/api/revert/<client_id>", methods=["POST"])
+def api_revert(client_id):
+    if client_id not in real_clients():
+        return jsonify({"error": f"unknown client '{client_id}'"}), 404
+    data = request.get_json(silent=True) or {}
+    target = (data.get("commit") or "").strip()
+    if not target:
+        return jsonify({"error": "missing commit"}), 400
+    with _job_lock:
+        job = _client_jobs.get(client_id, {})
+        if job.get("state") == "running":
+            return jsonify({"error": "already working"}), 409
+    t = threading.Thread(target=_run_revert, args=(client_id, target), daemon=True)
+    t.start()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/recent-changes/<client_id>")
 def api_recent_changes(client_id):
     # Same query Git Console's own /api/recent-sends already uses --

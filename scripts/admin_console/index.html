@@ -147,6 +147,29 @@
   .history-toggle .chev { transition: transform 0.15s ease; font-size: 11px; }
   .history-toggle.open .chev { transform: rotate(90deg); }
 
+  /* Code-only revert -- deliberately lighter weight than snapshot restore
+     (amber, not red): it never touches data, so it's the thing to reach
+     for first when a bad code change is the actual problem. Sits above
+     the red restore panel for that reason. */
+  .revert-divider { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 10px; }
+  .revert-link {
+    font-size: 13.5px; color: var(--text-muted); background: none; border: none; padding: 0;
+    cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .revert-panel {
+    margin-top: 10px; background: var(--warning-bg); border: 1px solid var(--warning-border);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .revert-panel .revert-heading { color: var(--warning-text); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .revert-panel .revert-desc { color: var(--warning-text); font-size: 13.5px; margin-bottom: 10px; }
+  .revert-commit-row {
+    display: flex; align-items: baseline; gap: 10px; padding: 7px 0; font-size: 13.5px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+  }
+  .revert-commit-row:last-child { border-bottom: none; }
+  .revert-commit-msg { color: var(--text); flex: 1; }
+  .revert-commit-author { color: var(--text-muted); font-size: 12.5px; white-space: nowrap; }
+
   /* Restore-from-backup -- deliberately understated, separated by a
      divider, distinct warning tone -- this discards real data, and
      should never read as a peer action to Review/Deploy. */
@@ -217,6 +240,8 @@ let pendingStagingTab = null;
 let pendingStagingClient = null;
 // {client_id: {open: bool, backups: [...] or null, selected: ts or null}}
 let restorePanels = {};
+// {client_id: {open: bool, commits: [...] or null}}
+let revertPanels = {};
 
 const WAITING_PAGE_HTML = `<!doctype html><html><head><title>Staging</title>
 <style>
@@ -289,9 +314,79 @@ function renderClientCard(c) {
     }
   }
 
+  if (c.job.kind === 'revert' && c.job.log.length) {
+    if (jobRunning) html += '<div class="working-row"><span class="spinner-small"></span>Working...</div>';
+    html += '<div class="job-log">' + esc(c.job.log.join('\n')) + '</div>';
+  }
+
+  if (c.has_own_repo) html += renderRevertSection(c, jobRunning);
   html += renderRestoreSection(c);
   html += '</div>';
   return html;
+}
+
+function renderRevertSection(c, jobRunning) {
+  const panel = revertPanels[c.client_id] || { open: false, commits: null };
+  let html = '<div class="revert-divider">';
+  html += '<button class="revert-link" onclick="toggleRevert(\'' + c.client_id + '\')">' +
+    (panel.open ? 'Hide code revert' : 'Revert code to a previous version...') + '</button>';
+
+  if (panel.open) {
+    html += '<div class="revert-panel">';
+    html += '<div class="revert-heading">Revert code only</div>';
+    html += '<div class="revert-desc">Today\'s data (orders, records) is left completely untouched -- only the deployed code moves.</div>';
+    if (panel.commits === null) {
+      html += '<div class="empty-note">Loading...</div>';
+    } else if (!panel.commits.length) {
+      html += '<div class="empty-note">No commit history found.</div>';
+    } else {
+      html += panel.commits.map(cm =>
+        '<div class="revert-commit-row">' +
+          '<span class="commit-hash">' + esc(cm.hash) + '</span>' +
+          '<span class="revert-commit-msg">' + esc(cm.subject) + '</span>' +
+          '<span class="revert-commit-author">' + esc(cm.author) + ' &middot; ' + esc(cm.when) + '</span>' +
+          '<button class="act small" ' + (jobRunning ? 'disabled' : '') + ' onclick="doRevert(\'' + c.client_id + '\',\'' + cm.hash + '\')">Revert to this</button>' +
+        '</div>'
+      ).join('');
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function toggleRevert(clientId) {
+  const panel = revertPanels[clientId] || { open: false, commits: null };
+  panel.open = !panel.open;
+  revertPanels[clientId] = panel;
+  if (panel.open && panel.commits === null) {
+    loadRevertCommits(clientId);
+  } else {
+    renderAll(lastStatus);
+  }
+}
+
+async function loadRevertCommits(clientId) {
+  try {
+    const res = await fetch(`/api/recent-changes/${clientId}`);
+    const data = await res.json();
+    revertPanels[clientId].commits = data.changes || [];
+  } catch (e) {
+    revertPanels[clientId].commits = [];
+  }
+  renderAll(lastStatus);
+}
+
+async function doRevert(clientId, commitHash) {
+  if (!confirm('Revert ' + clientId + '\'s code to ' + commitHash + '? Data is untouched, but this changes what\'s live right now.')) {
+    return;
+  }
+  await fetch(`/api/revert/${clientId}`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({commit: commitHash}),
+  });
+  revertPanels[clientId] = { open: false, commits: null };
+  refresh();
 }
 
 function renderRestoreSection(c) {
