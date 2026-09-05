@@ -322,6 +322,17 @@ def api_status():
         entry["deploy_peers"] = client_deploy_peers(client_id, clients)
         entry["staging_is_showing_this_client"] = staging_points_at == client_id
         entry["job"] = job_copy.get(client_id, {"kind": None, "state": "idle", "log": []})
+        # ready_to_deploy as computed by _derive_status is pure git-commit
+        # comparison -- staging's checkout genuinely succeeds (git HEAD
+        # lands on the right commit) even when the review's actual health
+        # check fails afterward, since checkout happens before the
+        # healthcheck step. Found live 2026-09-05: a deliberately broken
+        # commit that explicitly failed review ("do not deploy this until
+        # it's fixed") still showed ready_to_deploy=true, because nothing
+        # here cared whether the review job that produced this state
+        # actually succeeded. Require it explicitly.
+        if entry["job"]["kind"] != "review" or entry["job"]["state"] != "done":
+            entry["ready_to_deploy"] = False
         entry["available_backups"] = _client_backups(client_id, limit=1)  # count only, full list on demand
         out.append(entry)
     out.sort(key=lambda e: e["client_id"])
@@ -583,7 +594,16 @@ def api_deploy(client_id):
         )
     with _staging_lock:
         staging_ok = _staging_points_at == client_id
-    if not ready or not staging_ok:
+    with _job_lock:
+        job = _client_jobs.get(client_id, {})
+        # Commit-hash equality alone isn't proof the review actually
+        # passed -- staging's git checkout succeeds even when the
+        # subsequent healthcheck fails, since checkout happens first.
+        # Server-side enforcement, not just a hidden button: a failed or
+        # missing review must never be deployable via a direct API call
+        # either.
+        review_passed = job.get("kind") == "review" and job.get("state") == "done"
+    if not ready or not staging_ok or not review_passed:
         return jsonify({"error": "Staging isn't reviewed against this client's pending commit yet."}), 409
     with _job_lock:
         job = _client_jobs.get(client_id, {})
