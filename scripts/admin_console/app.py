@@ -39,7 +39,9 @@ by hand -- this never reimplements deploy/rollback logic itself.
 """
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.error
@@ -161,7 +163,6 @@ def _refresh_client_state(client_id, do_fetch, clients=None):
         entry = _client_state.setdefault(client_id, {
             "live_commit": None, "origin_commit": None, "staging_commit": None,
             "pending_commits": [], "last_fetch_at": None, "last_fetch_error": None,
-            "reverted_to": None, "reverted_at_origin": None,
         })
         if do_fetch:
             fetch = _git(["fetch", "origin"], cwd=fetch_checkout)
@@ -171,21 +172,6 @@ def _refresh_client_state(client_id, do_fetch, clients=None):
         live = _rev_parse(live_wt)
         origin = _rev_parse(fetch_checkout, "origin/main")
         staging = _rev_parse(staging_wt)
-
-        # A code revert intentionally moves live BACKWARD relative to
-        # origin/main's tip -- structurally identical, from git's
-        # perspective, to "just hasn't caught up yet" (live is an
-        # ancestor of origin either way). Without tracking this
-        # explicitly, the UI can't tell "deliberate rollback, leave it"
-        # apart from "genuinely new work waiting to deploy" -- and would
-        # invite an admin to accidentally undo their own revert by
-        # clicking the same Review/Deploy flow right back onto origin's
-        # tip. Cleared automatically the moment origin/main actually
-        # moves (a real new push) -- only suppresses the prompt while
-        # nothing new has happened since the revert.
-        if entry.get("reverted_at_origin") and entry["reverted_at_origin"] != origin:
-            entry["reverted_to"] = None
-            entry["reverted_at_origin"] = None
 
         entry["live_commit"] = live
         entry["origin_commit"] = origin
@@ -300,16 +286,12 @@ def _derive_status(state):
         state["live_commit"] and state["origin_commit"]
         and state["live_commit"] != state["origin_commit"]
     )
-    intentionally_reverted = bool(
-        state.get("reverted_to") and state.get("reverted_at_origin") == state["origin_commit"]
-    )
     return {
         "live_commit": _short(state["live_commit"]),
         "origin_commit": _short(state["origin_commit"]),
         "staging_commit": _short(state["staging_commit"]),
         "pending_commits": state["pending_commits"],
         "has_pending": has_pending,
-        "intentionally_reverted": intentionally_reverted,
         "staging_matches_pending": staging_matches_pending,
         "ready_to_deploy": has_pending and staging_matches_pending,
         "last_fetch_at": state["last_fetch_at"],
@@ -665,17 +647,76 @@ def api_restore(client_id):
     return jsonify({"ok": True})
 
 
+def _create_and_push_restore_commit(client_id, target_commit, repo_url):
+    """Makes 'revert to an old commit' land as a brand-new commit on top
+    of origin/main whose tree exactly matches target_commit's content --
+    never a force-push, never a history rewrite. Ordinary git users call
+    this a revert/restore commit: history stays honest (the 'bad' commits
+    are still right there, just superseded), and a plain `git pull` on
+    any developer's laptop fast-forwards onto it cleanly, no special
+    handling needed there at all.
+
+    Done in a throwaway scratch clone, deliberately never in the live
+    worktree itself -- that's deploy-client's job, once this exists as a
+    real commit to deploy. Returns (ok, new_commit_sha_or_error_message).
+    """
+    tmp = tempfile.mkdtemp(prefix=f"erp16-revert-{client_id}-")
+    try:
+        clone = _git(["clone", repo_url, tmp], cwd="/tmp")
+        if clone.returncode != 0:
+            return False, f"Could not clone {repo_url}: {clone.stderr.strip()}"
+
+        verify = _git(["cat-file", "-e", target_commit + "^{commit}"], cwd=tmp)
+        if verify.returncode != 0:
+            return False, f"'{target_commit}' isn't a real commit in this repo's history."
+
+        # Wipe the working tree, then restore only what target_commit
+        # actually contains -- `git checkout <commit> -- .` alone would
+        # leave behind any file a later commit added that target_commit
+        # never had, so a plain overlay isn't enough to reproduce its
+        # tree exactly.
+        for args, desc in [
+            (["rm", "-rf", "."], "clear the working tree"),
+            (["checkout", target_commit, "--", "."], "restore target commit's content"),
+        ]:
+            r = _git(args, cwd=tmp)
+            if r.returncode != 0:
+                return False, f"Failed to {desc}: {r.stderr.strip()}"
+
+        status = _git(["status", "--porcelain"], cwd=tmp)
+        if not status.stdout.strip():
+            # main's content already matches target_commit exactly (e.g.
+            # reverting to the commit already on top) -- nothing to commit.
+            return True, _rev_parse(tmp, "HEAD")
+
+        _git(["add", "-A"], cwd=tmp)
+        commit = _git(
+            ["commit", "-m", f"Revert to {target_commit[:7]} (content restore via Admin Console -- history preserved, nothing force-pushed)"],
+            cwd=tmp,
+        )
+        if commit.returncode != 0:
+            return False, f"Commit failed: {commit.stderr.strip()}"
+
+        push = _git(["push", "origin", "HEAD:main"], cwd=tmp)
+        if push.returncode != 0:
+            return False, f"Push failed (does this client's deploy key have write access yet?): {push.stderr.strip()}"
+
+        return True, _rev_parse(tmp, "HEAD")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _run_revert(client_id, target_commit):
     """Code-only revert -- puts a client's code back to an arbitrary past
-    commit, deliberately leaving today's real data (orders, records)
-    completely untouched. Smaller blast radius than snapshot restore
-    (which also replaces data), so it's the thing to reach for when a bad
-    code change is the actual problem, not the data.
+    commit's content, deliberately leaving today's real data (orders,
+    records) completely untouched. Smaller blast radius than snapshot
+    restore (which also replaces data), so it's the thing to reach for
+    when a bad code change is the actual problem, not the data.
 
-    Reuses deploy-client wholesale (same backup -> promote -> healthcheck
-    -> auto-rollback path a normal deploy already goes through) --
-    the only difference from api_deploy is that the target commit comes
-    from history, not always origin_commit."""
+    Lands as a new commit on origin/main (see
+    _create_and_push_restore_commit), then deploys THAT commit via
+    deploy-client -- so live and origin end up equal again afterward,
+    same as any ordinary deploy, no special "reverted" state to track."""
     with _job_lock:
         job = _client_jobs.setdefault(client_id, {"kind": None, "state": "idle", "log": []})
         if job["state"] == "running":
@@ -689,29 +730,26 @@ def _run_revert(client_id, target_commit):
             _client_jobs[client_id]["state"] = "error"
         return
 
-    _, _, fetch_checkout = client_worktrees(client_id, clients)
-    verify = _git(["cat-file", "-e", target_commit + "^{commit}"], cwd=fetch_checkout)
-    if verify.returncode != 0:
-        _job_log(client_id, f"'{target_commit}' isn't a real commit in this client's repo history.")
+    repo_url = f"github-{client_id}:{clients[client_id]['git_repo']}.git"
+    _job_log(client_id, "Creating a restore commit on top of history (ordinary push, nothing force-pushed or rewritten)...")
+    ok, result = _create_and_push_restore_commit(client_id, target_commit, repo_url)
+    if not ok:
+        _job_log(client_id, result)
         with _job_lock:
             _client_jobs[client_id]["state"] = "error"
         return
+    new_commit = result
+    _job_log(client_id, f"origin/main now at {new_commit[:7]} (content matches {target_commit[:7]})")
 
     proc = subprocess.Popen(
-        [DEPLOY_SH, "deploy-client", client_id, target_commit],
+        [DEPLOY_SH, "deploy-client", client_id, new_commit],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
     )
     for line in proc.stdout:
         _job_log(client_id, line.rstrip("\n"))
     proc.wait()
 
-    _refresh_client_state(client_id, do_fetch=False, clients=clients)
-    if proc.returncode == 0:
-        with _state_lock:
-            entry = _client_state.get(client_id)
-            if entry:
-                entry["reverted_to"] = _short(target_commit)
-                entry["reverted_at_origin"] = entry["origin_commit"]
+    _refresh_client_state(client_id, do_fetch=True, clients=clients)
     with _job_lock:
         _client_jobs[client_id]["state"] = "done" if proc.returncode == 0 else "error"
 

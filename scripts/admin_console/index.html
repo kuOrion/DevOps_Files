@@ -162,14 +162,6 @@
   }
   .revert-panel .revert-heading { color: var(--warning-text); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
   .revert-panel .revert-desc { color: var(--warning-text); font-size: 13.5px; margin-bottom: 10px; }
-  .revert-intentional-note {
-    font-size: 13.5px; color: var(--text-secondary); margin: 10px 0; padding: 8px 10px;
-    background: var(--surface); border-radius: 6px;
-  }
-  .revert-intentional-note .revert-show-link {
-    font-size: 13px; color: var(--text-muted); background: none; border: none; padding: 0;
-    cursor: pointer; text-decoration: underline; text-underline-offset: 2px; margin-left: 6px;
-  }
   /* Fixed two-row layout regardless of message length -- hash+message on
      top, author+button pinned bottom-right below -- so a long commit
      message wrapping never pushes the button out of alignment with its
@@ -285,11 +277,6 @@ let pendingStagingClient = null;
 let restorePanels = {};
 // {client_id: {open: bool, commits: [...] or null}}
 let revertPanels = {};
-// {client_id: true} -- opts back into the normal Review/Deploy prompt
-// after a deliberate revert, which is hidden by default (see
-// intentionally_reverted below) so it doesn't read as "here's new work
-// to deploy" right after someone intentionally rolled code back.
-let revertedShown = {};
 // {clientId, commitHash, subject} while the revert confirmation modal is open
 let pendingRevert = null;
 
@@ -327,15 +314,6 @@ function renderClientCard(c) {
 
   if (!c.has_pending) {
     html += '<div class="client-card-idle">Live is up to date.</div>';
-  } else if (c.intentionally_reverted && !revertedShown[c.client_id]) {
-    // Code was deliberately reverted and nothing new has been pushed
-    // since -- live being "behind" origin/main here is intentional, not
-    // unfinished work. Don't auto-prompt Review/Deploy (that would
-    // invite undoing the revert by accident); require an explicit
-    // opt-in to see it.
-    html += '<div class="revert-intentional-note">Live was intentionally reverted to <code class="modal-hash">' + esc(c.live_commit) + '</code>. ' +
-      esc(c.pending_commits.length) + ' newer commit(s) on origin/main are not deployed.' +
-      '<button class="revert-show-link" onclick="showRevertedPending(\'' + c.client_id + '\')">Show / move forward anyway</button></div>';
   } else {
     const commitRows = c.pending_commits.map(cm =>
       '<div class="commit-row">' +
@@ -440,11 +418,6 @@ async function loadRevertCommits(clientId) {
   renderAll(lastStatus);
 }
 
-function showRevertedPending(clientId) {
-  revertedShown[clientId] = true;
-  renderAll(lastStatus);
-}
-
 function openRevertModal(clientId, commitHash) {
   const commits = (revertPanels[clientId] && revertPanels[clientId].commits) || [];
   const cm = commits.find(x => x.hash === commitHash);
@@ -469,7 +442,6 @@ async function confirmRevert() {
     body: JSON.stringify({commit: commitHash}),
   });
   revertPanels[clientId] = { open: false, commits: null };
-  delete revertedShown[clientId];
   refresh();
 }
 
