@@ -161,6 +161,7 @@ def _refresh_client_state(client_id, do_fetch, clients=None):
         entry = _client_state.setdefault(client_id, {
             "live_commit": None, "origin_commit": None, "staging_commit": None,
             "pending_commits": [], "last_fetch_at": None, "last_fetch_error": None,
+            "reverted_to": None, "reverted_at_origin": None,
         })
         if do_fetch:
             fetch = _git(["fetch", "origin"], cwd=fetch_checkout)
@@ -170,6 +171,21 @@ def _refresh_client_state(client_id, do_fetch, clients=None):
         live = _rev_parse(live_wt)
         origin = _rev_parse(fetch_checkout, "origin/main")
         staging = _rev_parse(staging_wt)
+
+        # A code revert intentionally moves live BACKWARD relative to
+        # origin/main's tip -- structurally identical, from git's
+        # perspective, to "just hasn't caught up yet" (live is an
+        # ancestor of origin either way). Without tracking this
+        # explicitly, the UI can't tell "deliberate rollback, leave it"
+        # apart from "genuinely new work waiting to deploy" -- and would
+        # invite an admin to accidentally undo their own revert by
+        # clicking the same Review/Deploy flow right back onto origin's
+        # tip. Cleared automatically the moment origin/main actually
+        # moves (a real new push) -- only suppresses the prompt while
+        # nothing new has happened since the revert.
+        if entry.get("reverted_at_origin") and entry["reverted_at_origin"] != origin:
+            entry["reverted_to"] = None
+            entry["reverted_at_origin"] = None
 
         entry["live_commit"] = live
         entry["origin_commit"] = origin
@@ -284,12 +300,16 @@ def _derive_status(state):
         state["live_commit"] and state["origin_commit"]
         and state["live_commit"] != state["origin_commit"]
     )
+    intentionally_reverted = bool(
+        state.get("reverted_to") and state.get("reverted_at_origin") == state["origin_commit"]
+    )
     return {
         "live_commit": _short(state["live_commit"]),
         "origin_commit": _short(state["origin_commit"]),
         "staging_commit": _short(state["staging_commit"]),
         "pending_commits": state["pending_commits"],
         "has_pending": has_pending,
+        "intentionally_reverted": intentionally_reverted,
         "staging_matches_pending": staging_matches_pending,
         "ready_to_deploy": has_pending and staging_matches_pending,
         "last_fetch_at": state["last_fetch_at"],
@@ -686,6 +706,12 @@ def _run_revert(client_id, target_commit):
     proc.wait()
 
     _refresh_client_state(client_id, do_fetch=False, clients=clients)
+    if proc.returncode == 0:
+        with _state_lock:
+            entry = _client_state.get(client_id)
+            if entry:
+                entry["reverted_to"] = _short(target_commit)
+                entry["reverted_at_origin"] = entry["origin_commit"]
     with _job_lock:
         _client_jobs[client_id]["state"] = "done" if proc.returncode == 0 else "error"
 
