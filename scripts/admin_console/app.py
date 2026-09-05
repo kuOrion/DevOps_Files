@@ -455,8 +455,24 @@ def _run_review(client_id):
     # container was simply never told its mount path had changed. `docker
     # compose up -d` recreates the container against the current compose
     # file when its config differs, and is a safe no-op when it doesn't.
+    #
+    # Found live 2026-09-05, during the synthetic failure test this whole
+    # revert/review pipeline was built to survive: reviewing the SAME
+    # client twice in a row (same mount path both times, only the
+    # checked-out commit inside it changes) means the compose config is
+    # byte-identical between reviews -- so plain `up -d` is correctly a
+    # no-op *for Docker's own purposes*, but that also means Odoo's
+    # already-running process is never actually restarted, and never
+    # re-imports the changed Python files. staging-web was found to have
+    # been running continuously since 2026-08-30, completely unaware of
+    # two real, same-day code changes -- a deliberately broken commit
+    # still reported "healthy," because the check was hitting a six-day-
+    # old process, not the code that was supposedly just reviewed.
+    # --force-recreate makes every review deterministically start a fresh
+    # Odoo process, regardless of whether the compose config itself
+    # differs from last time.
     compose_file = os.path.join(BUILD_DIR, "generated", "staging", "docker-compose.yml")
-    restart = subprocess.run(["docker", "compose", "-f", compose_file, "up", "-d", "web"], capture_output=True, text=True)
+    restart = subprocess.run(["docker", "compose", "-f", compose_file, "up", "-d", "--force-recreate", "web"], capture_output=True, text=True)
     if restart.returncode != 0:
         _job_log(client_id, restart.stderr.strip() or "Restart failed.")
         with _job_lock:
