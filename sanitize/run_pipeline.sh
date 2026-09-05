@@ -128,10 +128,20 @@ echo "=== STEP 5b: rotate_app_secrets.py (database.secret rotation, ir_mail_serv
 docker exec -e PYTHONUNBUFFERED=1 -e DBHOST="$DBHOST" -e DBPASS="$DBPASS" -e SANITIZED_DB_NAME="$SANITIZED_DB_NAME" \
     "$WEB" python3 -u /tmp/rotate_app_secrets.py
 
-echo "=== STEP 6: cleanup -- intermediate CSVs + this run's handoff dump/filestore ==="
+echo "=== STEP 6: cleanup -- intermediate CSVs ==="
 docker exec "$WEB" rm -f "/tmp/pii_"*"_${SOURCE_DB_NAME}.csv" "/tmp/substring_hunt_hits_${SOURCE_DB_NAME}.csv" 2>/dev/null || true
-rm -f "$RAW_DIR/db.dump" "$RAW_DIR/filestore.tar.gz"
-echo "handoff dump/filestore for $CLIENT_ID removed -- next run needs a fresh pull_from_live.sh pull"
+# Deliberately NOT removing $RAW_DIR/db.dump/filestore.tar.gz here anymore
+# (found live 2026-09-05: this directory is owned by erp16-puller, mode
+# 2750, group has no write -- erp16-sanitizer being a group member was
+# never enough to delete files inside it, since that needs write on the
+# DIRECTORY, not the file. Every nightly run failed at exactly this line
+# for 16 straight nights, Aug 20 - Sep 5, silently discarding that
+# night's already-successful sanitize+publish because this one cleanup
+# step threw. Matches this file's own header comment above, which always
+# said RAW_DIR is a "read-only handoff dump" to this script -- this line
+# just never actually honored that. Cleanup now happens in
+# nightly_sanitize.sh instead, run as erp16-puller, the directory's
+# actual owner -- see the comment there for why.
 
 PIPELINE_END=$(date +%s)
 echo "=== PIPELINE COMPLETE in $((PIPELINE_END - PIPELINE_START))s ==="

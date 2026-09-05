@@ -61,6 +61,20 @@ for CLIENT_ID in "${CLIENTS[@]}"; do
         continue
     fi
 
+    echo "=== [$CLIENT_ID] cleanup raw handoff dump ==="
+    # Moved here from run_pipeline.sh (2026-09-05): $RAW_BASE/$CLIENT_ID is
+    # owned by erp16-puller (mode 2750, no group-write), so erp16-sanitizer
+    # could never actually delete these files -- every nightly run failed
+    # at this exact step for 16 straight nights (Aug 20 - Sep 5), silently
+    # discarding that night's already-successful sanitize+publish. Run as
+    # the directory's real owner instead, matching the same narrow-user
+    # pattern already used for pull/sanitize above. Best-effort: a failure
+    # here shouldn't undo tonight's already-successful sanitize+publish,
+    # just leaves a stale dump for next run's pull_from_live.sh to
+    # overwrite (which it always does unconditionally anyway).
+    sudo -u erp16-puller rm -f "$RAW_BASE/$CLIENT_ID/db.dump" "$RAW_BASE/$CLIENT_ID/filestore.tar.gz" \
+        || echo "=== [$CLIENT_ID] WARNING: could not clean up raw handoff dump -- next pull will overwrite it anyway ==="
+
     echo "=== [$CLIENT_ID] publish ==="
     # No --aws-profile: publish_snapshot.sh defaults to the real bucket +
     # empty profile now (2026-08-17), picked up automatically via this
